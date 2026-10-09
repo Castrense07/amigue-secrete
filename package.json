@@ -1,0 +1,10 @@
+{
+  "name": "amigo-secreto",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Sorteio de amigo secreto com inscrição pelos participantes, subgrupos ocultos e resultado individual.",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "@upstash/redis": "^1.34.0"
+  }
+}

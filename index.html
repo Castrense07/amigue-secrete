@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Amigo Secreto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=DM+Sans:wght@400;500;700&display=swap">
+<style>
+  /* Layout: coluna única. Primeiro a área do participante (inscrição, entrada ou resultado); depois, só para o organizador, três painéis (tema, participantes, sorteio). */
+  :root {
+    --bg: #F2F5F3;
+    --surface: #FFFFFF;
+    --fg: #1A2723;
+    --muted: #55655F;
+    --line: #D3DCD8;
+    --accent: #B3263E;
+    --accent-fg: #FFFFFF;
+    --pine: #1F5C4A;
+    --pine-soft: #DDEBE5;
+    --danger: #A31D2F;
+    --warn-bg: #FBEFD9;
+    --warn-fg: #6B4A06;
+    --font-display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+    --font-body: "DM Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101816;
+      --surface: #17211E;
+      --fg: #E7EFEC;
+      --muted: #9CB0A9;
+      --line: #2B3A36;
+      --accent: #E5677D;
+      --accent-fg: #1B0A0F;
+      --pine: #77C9AB;
+      --pine-soft: #1E3129;
+      --danger: #F08A9A;
+      --warn-bg: #33290F;
+      --warn-fg: #F0D28A;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  img { max-width: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.5;
+    padding-inline: 16px;
+    padding-block: 36px 72px;
+  }
+  .wrap { max-width: 720px; margin-inline: auto; display: grid; gap: 28px; }
+  h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.015em; }
+  h1 { font-size: clamp(2.5rem, 9vw, 3.75rem); line-height: 1; font-weight: 700; }
+  h2 { font-size: 1.5rem; line-height: 1.15; font-weight: 700; }
+  p { margin: 0; }
+  .lede { color: var(--muted); max-width: 54ch; margin-top: 12px; overflow-wrap: anywhere; }
+  .label-up { font-size: 0.75rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--pine); }
+
+  .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 18px; min-width: 0; }
+  .panel-head { display: grid; gap: 4px; }
+  .hint { color: var(--muted); font-size: 0.9rem; max-width: 62ch; }
+  .admin { display: grid; gap: 20px; }
+  .admin-title { display: grid; gap: 4px; padding-top: 8px; border-top: 2px solid var(--pine); }
+
+  .banner { aspect-ratio: 16 / 7; max-width: 100%; border-radius: 12px; overflow: hidden; background: var(--pine-soft); border: 1px solid var(--line); }
+  .banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .banner-empty { aspect-ratio: 16 / 7; max-width: 100%; border-radius: 10px; background: var(--pine-soft); border: 1px dashed var(--line); display: grid; place-items: center; text-align: center; padding: 16px; color: var(--pine); font-size: 0.9rem; }
+
+  .stack { display: grid; gap: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
+  .field { display: grid; gap: 6px; min-width: 0; }
+  .field label { font-size: 0.85rem; font-weight: 500; }
+  input[type="text"], input[type="email"], input[type="password"], textarea {
+    width: 100%; font: inherit; color: var(--fg); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0;
+  }
+  textarea { resize: vertical; min-height: 84px; }
+  input::placeholder, textarea::placeholder { color: var(--muted); opacity: 0.8; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .btn { font: inherit; font-weight: 500; border-radius: 8px; padding: 10px 16px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.2; }
+  .btn:hover { border-color: var(--pine); }
+  .btn-primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; }
+  .btn-primary:hover { filter: brightness(1.06); border-color: var(--accent); }
+  .btn[disabled] { opacity: 0.45; cursor: not-allowed; filter: none; }
+  .btn-small { padding: 6px 10px; font-size: 0.85rem; }
+  .btn-danger { color: var(--danger); }
+  .btn-link { background: none; border: 0; padding: 4px 0; color: var(--muted); text-decoration: underline; font-size: 0.85rem; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tab[aria-pressed="true"] { background: var(--pine-soft); border-color: var(--pine); color: var(--pine); font-weight: 700; }
+
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; font-weight: 500; background: var(--pine-soft); color: var(--pine); border-radius: 999px; padding: 3px 10px; }
+  .chip-plain { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+
+  ul.list { list-style: none; margin: 0; padding: 0; display: grid; }
+  ul.list > li { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; padding: 14px 0; border-top: 1px solid var(--line); }
+  ul.list > li:first-child { border-top: 0; padding-top: 0; }
+  .who { min-width: 0; display: grid; gap: 4px; flex: 1 1 240px; }
+  .who strong { overflow-wrap: anywhere; }
+  .mail { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
+  .gifts { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }
+  details > summary { cursor: pointer; font-size: 0.85rem; color: var(--pine); font-weight: 500; }
+  .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 0 1 300px; min-width: 0; }
+  .controls input[type="text"] { padding: 7px 10px; font-size: 0.9rem; flex: 1 1 140px; }
+  .empty { color: var(--muted); padding: 4px 0; }
+
+  .status { font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
+  .status.error { color: var(--danger); font-weight: 500; }
+  .notice { background: var(--warn-bg); color: var(--warn-fg); border-radius: 10px; padding: 10px 14px; font-size: 0.9rem; }
+  .reveal-box { display: grid; gap: 12px; justify-items: start; }
+  .reveal-name { font-family: var(--font-display); font-size: clamp(1.8rem, 7vw, 2.6rem); line-height: 1.1; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  .foot { display: flex; justify-content: center; }
+
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 16px; border-radius: 8px; font-size: 0.9rem; max-width: calc(100% - 32px); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+  .toast.show { opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <header>
+    <p class="label-up">Sorteio entre amigos</p>
+    <h1>Amigo Secreto</h1>
+    <p id="evLine" class="lede"></p>
+  </header>
+
+  <div id="banner" class="banner" hidden></div>
+  <p id="noteLine" class="hint" style="white-space:pre-wrap" hidden></p>
+
+  <section id="view" class="panel" aria-live="polite"><p class="hint">Carregando…</p></section>
+
+  <section id="adminLogin" class="panel" hidden aria-labelledby="al">
+    <div class="panel-head">
+      <p class="label-up">Organizador</p>
+      <h2 id="al">Entrar na área do organizador</h2>
+      <p class="hint">Use a senha definida na configuração do site.</p>
+    </div>
+    <form id="adminForm" class="stack">
+      <div class="field" style="max-width:320px"><label for="adminPass">Senha</label><input id="adminPass" type="password" autocomplete="current-password" required></div>
+      <div class="row"><button class="btn btn-primary" type="submit">Entrar</button></div>
+    </form>
+    <p id="adminLoginStatus" class="status" role="status"></p>
+  </section>
+
+  <div id="adminArea" class="admin" hidden>
+    <div class="admin-title">
+      <p class="label-up">Área do organizador</p>
+      <p class="hint">Só quem tem a senha vê esta parte. Os subgrupos ficam escondidos dos participantes e o sorteio é feito no servidor: nem você vê quem tirou quem.</p>
+    </div>
+
+    <section class="panel" aria-labelledby="a1">
+      <div class="panel-head">
+        <h2 id="a1">Tema do evento</h2>
+        <p class="hint">A imagem aparece no topo para todos os participantes.</p>
+      </div>
+      <div id="adminBanner"></div>
+      <div class="row">
+        <label class="btn" for="imgInput">Escolher imagem</label>
+        <input id="imgInput" type="file" accept="image/*" hidden>
+        <button id="imgRemove" class="btn btn-danger" type="button" hidden>Remover imagem</button>
+      </div>
+      <p id="imgStatus" class="status" role="status"></p>
+      <form id="cfgForm" class="stack">
+        <div class="grid">
+          <div class="field">
+            <label for="evName">Nome do evento</label>
+            <input id="evName" type="text" placeholder="Ex.: Amigo Secreto de Natal 2026">
+          </div>
+          <div class="field">
+            <label for="evNote">Recado para todos (opcional)</label>
+            <textarea id="evNote" placeholder="Ex.: Valor sugerido R$ 50. Troca de presentes dia 20/12."></textarea>
+          </div>
+        </div>
+        <div class="row"><button class="btn" type="submit">Salvar evento</button><span id="cfgStatus" class="status" role="status"></span></div>
+      </form>
+    </section>
+
+    <section class="panel" aria-labelledby="a2">
+      <div class="panel-head">
+        <h2 id="a2">Participantes e subgrupos</h2>
+        <p class="hint">Defina o subgrupo de cada pessoa. O sorteio acontece só dentro de cada subgrupo, então ninguém tira alguém de fora do próprio círculo. Quem ficar sem subgrupo é sorteado com os outros sem subgrupo.</p>
+      </div>
+      <div id="poolChips" class="chips"></div>
+      <div id="poolWarn" class="notice" hidden></div>
+      <ul id="peopleList" class="list"></ul>
+      <datalist id="groupOptions"></datalist>
+      <div class="row">
+        <button id="copyInvite" class="btn btn-small" type="button">Copiar convite com o link</button>
+        <button id="copyMails" class="btn btn-small" type="button">Copiar todos os e-mails</button>
+        <button id="copyNotice" class="btn btn-small" type="button" hidden>Copiar aviso de sorteio liberado</button>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="a3">
+      <div class="panel-head">
+        <h2 id="a3">Sorteio</h2>
+        <p id="drawInfo" class="hint"></p>
+      </div>
+      <div class="row">
+        <button id="drawBtn" class="btn btn-primary" type="button">Liberar sorteio</button>
+        <button id="reopenBtn" class="btn" type="button" hidden>Reabrir inscrições</button>
+      </div>
+      <p id="drawMsg" class="status" role="status"></p>
+    </section>
+    <div class="foot"><button id="adminOut" class="btn-link" type="button">Sair da área do organizador</button></div>
+  </div>
+
+  <div class="foot"><button id="toggleAdmin" class="btn-link" type="button">Sou o organizador</button></div>
+</main>
+<div id="toast" class="toast" role="status"></div>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  function norm(s) { return (s || '').trim().toLowerCase(); }
+  function makeEl(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    return e;
+  }
+  var LS = {
+    get: function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+    set: function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+    del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
+  };
+  var toastTimer;
+  function toast(msg) {
+    var t = $('#toast'); t.textContent = msg; t.classList.add('show');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { t.classList.remove('show'); }, 2400);
+  }
+  function copyText(text, okMsg) {
+    var done = function () { toast(okMsg || 'Copiado'); };
+    var fallback = function () {
+      var ta = document.createElement('textarea');
+      ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      var ok = false; try { ok = document.execCommand('copy'); } catch (e) {}
+      document.body.removeChild(ta);
+      if (ok) done(); else toast('Não foi possível copiar neste aparelho.');
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+    else fallback();
+  }
+  function siteUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+
+  async function api(action, data, token) {
+    var h = { 'Content-Type': 'application/json' };
+    if (token) h.Authorization = 'Bearer ' + token;
+    var r;
+    try {
+      r = await fetch('/api/app', { method: 'POST', headers: h, body: JSON.stringify(Object.assign({ action: action }, data || {})) });
+    } catch (e) { throw new Error('Sem conexão. Verifique a internet e tente de novo.'); }
+    var j = {};
+    try { j = await r.json(); } catch (e) {}
+    if (!r.ok) { var err = new Error(j.error || 'Algo deu errado. Tente de novo.'); err.status = r.status; throw err; }
+    return j;
+  }
+
+  /* ============ Participante ============ */
+  var P = { cfg: null, session: LS.get('as_sess'), me: null, tab: 'register', img: '', imgAt: -1, loaded: false, error: '' };
+  var viewKey = '', formDirty = false, shown = false;
+
+  function renderHead() {
+    var ev = ((P.cfg && P.cfg.event) || '').trim();
+    $('#evLine').textContent = ev || 'Cadastre seu nome, e-mail e sugestões de presente. O organizador libera o sorteio depois.';
+    var note = ((P.cfg && P.cfg.note) || '').trim();
+    var nl = $('#noteLine'); nl.hidden = !note; nl.textContent = note;
+    var b = $('#banner'); b.innerHTML = '';
+    if (P.img) {
+      b.hidden = false;
+      var img = document.createElement('img'); img.src = P.img; img.alt = 'Imagem do tema: ' + (ev || 'amigo secreto');
+      b.appendChild(img);
+    } else b.hidden = true;
+  }
+
+  async function refresh() {
+    try {
+      var st = await api('state');
+      P.cfg = st;
+      if (P.session) {
+        try { P.me = await api('me', {}, P.session); }
+        catch (e) { if (e.status === 401) { P.session = null; LS.del('as_sess'); P.me = null; } else throw e; }
+      }
+      P.loaded = true; P.error = '';
+      if (st.imageAt !== P.imgAt) {
+        P.imgAt = st.imageAt;
+        if (st.imageAt) { try { P.img = (await api('image')).dataUrl || ''; } catch (e) { P.img = ''; } } else P.img = '';
+        renderAdminBanner();
+      }
+    } catch (e) { P.error = e.message; }
+    renderHead(); renderView();
+  }
+
+  function buildGuest() {
+    var open = P.cfg.status !== 'drawn';
+    var html =
+      '<div class="panel-head"><p class="label-up">Participar</p><h2>Entre no sorteio</h2></div>' +
+      '<div class="tabs" role="group" aria-label="Escolha uma opção">' +
+      '<button type="button" class="btn tab" data-tab="register" aria-pressed="' + (P.tab === 'register') + '">Quero participar</button>' +
+      '<button type="button" class="btn tab" data-tab="login" aria-pressed="' + (P.tab === 'login') + '">Já me inscrevi</button></div>';
+    if (P.tab === 'register') {
+      if (!open) html += '<p class="notice">As inscrições foram encerradas porque o sorteio já foi liberado. Fale com o organizador.</p>';
+      else html +=
+        '<form id="regForm" class="stack" autocomplete="off">' +
+        '<div class="grid"><div class="field"><label for="rName">Seu nome</label><input id="rName" type="text" maxlength="80" required></div>' +
+        '<div class="field"><label for="rMail">Seu e-mail</label><input id="rMail" type="email" maxlength="120" required></div></div>' +
+        '<div class="field"><label for="rGifts">Sugestões de presente</label><textarea id="rGifts" maxlength="1000" placeholder="Ex.: livros de ficção, café especial, camisetas tamanho M. Quem tirar você vai ler isso."></textarea></div>' +
+        '<div class="field" style="max-width:320px"><label for="rPin">Crie um PIN (mínimo 4 caracteres)</label><input id="rPin" type="password" minlength="4" maxlength="64" autocomplete="new-password" required>' +
+        '<span class="hint">Você vai usar o e-mail e este PIN para voltar e ver quem tirou. Anote-o.</span></div>' +
+        '<div class="row"><button class="btn btn-primary" type="submit">Entrar no sorteio</button></div></form>';
+    } else {
+      html +=
+        '<form id="logForm" class="stack">' +
+        '<div class="grid"><div class="field"><label for="lMail">Seu e-mail</label><input id="lMail" type="email" autocomplete="username" required></div>' +
+        '<div class="field"><label for="lPin">Seu PIN</label><input id="lPin" type="password" autocomplete="current-password" required></div></div>' +
+        '<div class="row"><button class="btn btn-primary" type="submit">Entrar</button></div></form>';
+    }
+    html += '<p id="gStatus" class="status" role="status"></p>';
+    $('#view').innerHTML = html;
+    var box = $('#view');
+    box.querySelectorAll('[data-tab]').forEach(function (b) {
+      b.addEventListener('click', function () { P.tab = b.getAttribute('data-tab'); viewKey = ''; renderView(); });
+    });
+    var rf = $('#regForm'); if (rf) rf.addEventListener('submit', onRegister);
+    var lf = $('#logForm'); if (lf) lf.addEventListener('submit', onLogin);
+  }
+  function buildEdit() {
+    $('#view').innerHTML =
+      '<div class="panel-head"><p class="label-up">Sua inscrição</p><h2>Você está no sorteio</h2>' +
+      '<p class="hint">Você pode editar seus dados até o organizador liberar o sorteio. Volte aqui depois para ver quem tirou.</p></div>' +
+      '<form id="editForm" class="stack" autocomplete="off">' +
+      '<p class="mail" id="eMail"></p>' +
+      '<div class="field"><label for="eName">Seu nome</label><input id="eName" type="text" maxlength="80" required></div>' +
+      '<div class="field"><label for="eGifts">Sugestões de presente</label><textarea id="eGifts" maxlength="1000"></textarea></div>' +
+      '<div class="row"><button class="btn btn-primary" type="submit">Salvar alterações</button><button id="logout" class="btn" type="button">Sair</button></div></form>' +
+      '<p id="eStatus" class="status" role="status"></p>';
+    var f = $('#editForm');
+    f.addEventListener('input', function () { formDirty = true; });
+    f.addEventListener('submit', onUpdate);
+    $('#logout').addEventListener('click', logout);
+  }
+  function buildResult() {
+    $('#view').innerHTML =
+      '<div class="panel-head"><p class="label-up">Resultado</p><h2>Seu amigo secreto</h2></div>' +
+      '<div id="resBox" class="reveal-box"></div>' +
+      '<div class="row"><button id="logout" class="btn btn-small" type="button">Sair</button></div>';
+    $('#logout').addEventListener('click', logout);
+  }
+  function fillResult() {
+    var rb = $('#resBox'); rb.innerHTML = '';
+    var r = P.me && P.me.result;
+    if (!r) { rb.appendChild(makeEl('p', 'hint', 'Seu nome não estava na lista quando o sorteio foi feito. Fale com o organizador.')); return; }
+    if (!shown) {
+      rb.appendChild(makeEl('p', 'hint', 'O sorteio foi liberado. Confira que ninguém está olhando a sua tela antes de revelar.'));
+      var b = makeEl('button', 'btn btn-primary', 'Revelar meu amigo secreto'); b.type = 'button';
+      b.addEventListener('click', function () { shown = true; fillResult(); });
+      rb.appendChild(b);
+    } else {
+      rb.appendChild(makeEl('p', 'label-up', 'Você tirou'));
+      rb.appendChild(makeEl('p', 'reveal-name', r.receiverName || ''));
+      rb.appendChild(makeEl('p', 'label-up', 'Sugestões de presente'));
+      rb.appendChild(makeEl('p', 'gifts', (r.receiverGifts || '').trim() || 'Essa pessoa não deixou sugestões. Combine com o grupo ou pergunte com discrição.'));
+      var h = makeEl('button', 'btn btn-small', 'Esconder'); h.type = 'button';
+      h.addEventListener('click', function () { shown = false; fillResult(); });
+      rb.appendChild(h);
+    }
+  }
+  function renderView() {
+    var box = $('#view');
+    if (!P.loaded) {
+      box.innerHTML = '';
+      if (P.error) {
+        box.appendChild(makeEl('p', 'status error', P.error));
+        var b = makeEl('button', 'btn', 'Tentar de novo'); b.type = 'button'; b.addEventListener('click', refresh); box.appendChild(b);
+      } else box.appendChild(makeEl('p', 'hint', 'Carregando…'));
+      viewKey = ''; return;
+    }
+    var key;
+    if (P.me) key = P.cfg.status === 'drawn' ? 'result' : 'edit';
+    else { if (P.cfg.status === 'drawn' && P.tab === 'register') P.tab = 'login'; key = 'guest:' + P.tab + ':' + P.cfg.status; }
+    if (key !== viewKey) {
+      viewKey = key; formDirty = false;
+      if (key === 'result') buildResult(); else if (key === 'edit') buildEdit(); else buildGuest();
+    }
+    if (key === 'edit') {
+      $('#eMail').textContent = P.me.email;
+      if (!formDirty) { $('#eName').value = P.me.name || ''; $('#eGifts').value = P.me.gifts || ''; }
+    }
+    if (key === 'result') fillResult();
+  }
+  function gStatus(msg, isErr) { var s = $('#gStatus'); if (s) { s.textContent = msg || ''; s.className = isErr ? 'status error' : 'status'; } }
+
+  async function onRegister(e) {
+    e.preventDefault(); gStatus('Enviando…');
+    try {
+      var r = await api('register', { name: $('#rName').value, email: $('#rMail').value, gifts: $('#rGifts').value, pin: $('#rPin').value });
+      P.session = r.session; LS.set('as_sess', r.session); viewKey = ''; await refresh(); toast('Inscrição feita');
+    } catch (err) { gStatus(err.message, true); }
+  }
+  async function onLogin(e) {
+    e.preventDefault(); gStatus('Entrando…');
+    try {
+      var r = await api('login', { email: $('#lMail').value, pin: $('#lPin').value });
+      P.session = r.session; LS.set('as_sess', r.session); viewKey = ''; await refresh();
+    } catch (err) { gStatus(err.message, true); }
+  }
+  async function onUpdate(e) {
+    e.preventDefault();
+    var st = $('#eStatus'); st.className = 'status'; st.textContent = 'Salvando…';
+    try {
+      await api('update', { name: $('#eName').value, gifts: $('#eGifts').value }, P.session);
+      formDirty = false; st.textContent = 'Alterações salvas.'; toast('Alterações salvas'); await refresh();
+    } catch (err) { st.textContent = err.message; st.className = 'status error'; }
+  }
+  function logout() { P.session = null; P.me = null; LS.del('as_sess'); shown = false; P.tab = 'login'; viewKey = ''; renderView(); }
+
+  /* ============ Organizador ============ */
+  var A = { token: LS.get('as_admin'), data: null, open: false, pinRow: null };
+  var cfgDirty = false, pendingList = false, armed = false, armTimer = null, reopenArmed = false, reopenTimer = null, busy = false;
+
+  function showAdmin(open) {
+    A.open = open;
+    $('#adminLogin').hidden = !(open && !A.token);
+    $('#adminArea').hidden = !(open && A.token && A.data);
+    $('#toggleAdmin').hidden = open;
+    if (open && A.token && !A.data) loadOverview();
+  }
+  async function loadOverview() {
+    try { A.data = await api('admin_overview', {}, A.token); renderAdmin(); showAdmin(true); }
+    catch (e) {
+      if (e.status === 401) { A.token = null; A.data = null; LS.del('as_admin'); showAdmin(true); }
+      else { toast(e.message); showAdmin(false); }
+    }
+  }
+  function focusInside(sel) { var a = document.activeElement; return a && a.closest && a.closest(sel); }
+
+  function poolsInfo() {
+    var people = A.data.people, by = {}, order = [];
+    people.forEach(function (p) {
+      var raw = (p.group || '').trim(), k = norm(raw);
+      if (!by[k]) { by[k] = { key: k, name: raw || 'Sem subgrupo', members: [] }; order.push(k); }
+      by[k].members.push(p);
+    });
+    var pools = order.map(function (k) { return by[k]; }), problems = [];
+    if (people.length < 2) problems.push('Precisa de pelo menos 2 pessoas inscritas.');
+    else pools.forEach(function (pl) {
+      if (pl.members.length < 2) problems.push(pl.key
+        ? 'O subgrupo "' + pl.name + '" tem só ' + pl.members[0].name + '. Coloque essa pessoa em outro subgrupo.'
+        : pl.members[0].name + ' está sozinho(a) sem subgrupo. Coloque em um subgrupo com outras pessoas.');
+    });
+    return { pools: pools, problems: problems };
+  }
+
+  function renderAdminBanner() {
+    var ab = $('#adminBanner'); if (!ab) return; ab.innerHTML = '';
+    if (P.img) { var w = makeEl('div', 'banner'); var im = document.createElement('img'); im.src = P.img; im.alt = ''; w.appendChild(im); ab.appendChild(w); }
+    else ab.appendChild(makeEl('div', 'banner-empty', 'Nenhuma imagem escolhida ainda.'));
+    $('#imgRemove').hidden = !P.img;
+  }
+  function renderCfg() {
+    if (!cfgDirty) { $('#evName').value = A.data.cfg.event || ''; $('#evNote').value = A.data.cfg.note || ''; }
+    renderAdminBanner();
+  }
+  function renderPools(info, drawn) {
+    var gl = $('#groupOptions'); gl.innerHTML = '';
+    info.pools.filter(function (pl) { return pl.key; }).forEach(function (pl) { var o = document.createElement('option'); o.value = pl.name; gl.appendChild(o); });
+    var chips = $('#poolChips'); chips.innerHTML = '';
+    if (A.data.people.length) info.pools.forEach(function (pl) {
+      chips.appendChild(makeEl('span', pl.key ? 'chip' : 'chip chip-plain', pl.name + ' · ' + pl.members.length + (pl.members.length === 1 ? ' pessoa' : ' pessoas')));
+    });
+    var msgs = info.problems.slice();
+    if (!msgs.length) info.pools.forEach(function (pl) { if (pl.members.length === 2) msgs.push('O subgrupo "' + pl.name + '" tem 2 pessoas, então elas vão tirar uma à outra.'); });
+    if (drawn && A.data.needsRedraw) msgs.unshift('O grupo mudou depois do sorteio. Refaça o sorteio para incluir todos.');
+    var warn = $('#poolWarn'); warn.hidden = !msgs.length; warn.textContent = msgs.join(' ');
+    $('#copyNotice').hidden = !drawn;
+  }
+  function renderPeople() {
+    var info = poolsInfo(), drawn = A.data.cfg.status === 'drawn';
+    renderPools(info, drawn);
+    if (focusInside('#peopleList')) { pendingList = true; return; }
+    pendingList = false;
+    var ul = $('#peopleList'); ul.innerHTML = '';
+    if (!A.data.people.length) ul.appendChild(makeEl('li', 'empty', 'Ninguém se inscreveu ainda. Copie o convite e envie ao grupo.'));
+    A.data.people.forEach(function (p) {
+      var li = document.createElement('li');
+      var who = makeEl('div', 'who');
+      who.appendChild(makeEl('strong', '', p.name));
+      who.appendChild(makeEl('span', 'mail', p.email));
+      var d = document.createElement('details');
+      d.appendChild(makeEl('summary', '', 'Sugestões de presente'));
+      d.appendChild(makeEl('p', 'gifts', (p.gifts || '').trim() || 'Nenhuma sugestão informada.'));
+      who.appendChild(d); li.appendChild(who);
+      var c = makeEl('div', 'controls');
+      if (A.pinRow === p.id) {
+        var pi = document.createElement('input'); pi.type = 'text'; pi.placeholder = 'Novo PIN'; pi.setAttribute('aria-label', 'Novo PIN de ' + p.name); pi.setAttribute('data-newpin', p.id); pi.autocomplete = 'off';
+        var ok = makeEl('button', 'btn btn-small btn-primary', 'Salvar PIN'); ok.type = 'button'; ok.setAttribute('data-savepin', p.id);
+        var no = makeEl('button', 'btn btn-small', 'Cancelar'); no.type = 'button'; no.setAttribute('data-cancelpin', '1');
+        c.appendChild(pi); c.appendChild(ok); c.appendChild(no);
+      } else {
+        var inp = document.createElement('input'); inp.type = 'text'; inp.setAttribute('list', 'groupOptions'); inp.placeholder = 'Subgrupo';
+        inp.value = p.group || ''; inp.setAttribute('aria-label', 'Subgrupo de ' + p.name); inp.setAttribute('data-gid', p.id);
+        c.appendChild(inp);
+        var rp = makeEl('button', 'btn btn-small', 'Novo PIN'); rp.type = 'button'; rp.setAttribute('data-pin', p.id); rp.title = 'Defina um novo PIN se a pessoa esqueceu';
+        var rm = makeEl('button', 'btn btn-small btn-danger', 'Remover'); rm.type = 'button'; rm.setAttribute('data-remove', p.id); rm.setAttribute('aria-label', 'Remover ' + p.name);
+        c.appendChild(rp); c.appendChild(rm);
+      }
+      li.appendChild(c); ul.appendChild(li);
+    });
+  }
+  function renderDraw() {
+    var info = poolsInfo(), drawn = A.data.cfg.status === 'drawn', btn = $('#drawBtn');
+    $('#reopenBtn').hidden = !drawn;
+    var di = $('#drawInfo');
+    if (drawn) {
+      var when = A.data.cfg.drawnAt ? new Date(A.data.cfg.drawnAt).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '';
+      di.textContent = 'Sorteio liberado' + (when ? ' em ' + when : '') + '. Cada participante vê só o próprio resultado ao entrar com e-mail e PIN. Refazer apaga o resultado atual.';
+      btn.textContent = armed ? 'Confirmar: refazer sorteio' : 'Refazer sorteio';
+    } else {
+      di.textContent = 'Ao liberar, o servidor sorteia dentro de cada subgrupo e cada participante passa a ver o seu resultado. Quem se inscrever depois fica de fora.';
+      btn.textContent = armed ? 'Confirmar: liberar sorteio' : 'Liberar sorteio';
+    }
+    btn.disabled = busy || info.problems.length > 0;
+  }
+  function renderAdmin() {
+    if (!A.data) return;
+    renderCfg(); renderPeople(); renderDraw();
+  }
+  function setDrawMsg(t, isErr) { var m = $('#drawMsg'); m.textContent = t || ''; m.className = isErr ? 'status error' : 'status'; }
+  function disarm() { armed = false; clearTimeout(armTimer); if (A.data) renderDraw(); }
+
+  function compress(img) {
+    var max = 1000, q = 0.72, s = Math.min(1, max / img.width), out = '';
+    for (var tries = 0; tries < 6; tries++) {
+      var c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * s)); c.height = Math.max(1, Math.round(img.height * s));
+      var ctx = c.getContext('2d'); ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, c.width, c.height);
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      out = c.toDataURL('image/jpeg', q);
+      if (out.length < 300000) return out;
+      q = Math.max(0.45, q - 0.08); s *= 0.85;
+    }
+    return out.length < 380000 ? out : '';
+  }
+
+  async function adminCall(action, data) {
+    try { return await api(action, data, A.token); }
+    catch (e) {
+      if (e.status === 401) { A.token = null; A.data = null; LS.del('as_admin'); showAdmin(true); }
+      throw e;
+    }
+  }
+
+  function bindAdmin() {
+    $('#toggleAdmin').addEventListener('click', function () { showAdmin(true); });
+    $('#adminOut').addEventListener('click', function () { A.token = null; A.data = null; LS.del('as_admin'); showAdmin(false); });
+    $('#adminForm').addEventListener('submit', async function (e) {
+      e.preventDefault(); var st = $('#adminLoginStatus'); st.className = 'status'; st.textContent = 'Entrando…';
+      try {
+        var r = await api('admin_login', { password: $('#adminPass').value });
+        A.token = r.session; LS.set('as_admin', r.session); $('#adminPass').value = ''; st.textContent = ''; await loadOverview();
+      } catch (err) { st.textContent = err.message; st.className = 'status error'; }
+    });
+    $('#evName').addEventListener('input', function () { cfgDirty = true; });
+    $('#evNote').addEventListener('input', function () { cfgDirty = true; });
+    $('#cfgForm').addEventListener('submit', async function (e) {
+      e.preventDefault(); var st = $('#cfgStatus'); st.className = 'status';
+      try { await adminCall('admin_save_cfg', { event: $('#evName').value, note: $('#evNote').value }); cfgDirty = false; st.textContent = 'Evento salvo.'; await loadOverview(); await refresh(); }
+      catch (err) { st.textContent = err.message; st.className = 'status error'; }
+    });
+    $('#imgInput').addEventListener('change', function (e) {
+      var f = e.target.files && e.target.files[0]; if (!f) return;
+      var st = $('#imgStatus'); st.className = 'status'; st.textContent = 'Preparando imagem…';
+      var r = new FileReader();
+      r.onload = function () {
+        var img = new Image();
+        img.onload = async function () {
+          var url = compress(img);
+          if (!url) { st.textContent = 'A imagem ficou grande demais. Tente outra menor.'; st.className = 'status error'; return; }
+          try { await adminCall('admin_image', { dataUrl: url }); st.textContent = 'Imagem do tema salva.'; await refresh(); }
+          catch (err) { st.textContent = err.message; st.className = 'status error'; }
+        };
+        img.onerror = function () { st.textContent = 'Não consegui abrir essa imagem.'; st.className = 'status error'; };
+        img.src = r.result;
+      };
+      r.readAsDataURL(f); e.target.value = '';
+    });
+    $('#imgRemove').addEventListener('click', async function () {
+      try { await adminCall('admin_image', { dataUrl: null }); $('#imgStatus').textContent = 'Imagem removida.'; await refresh(); }
+      catch (err) { $('#imgStatus').textContent = err.message; $('#imgStatus').className = 'status error'; }
+    });
+
+    var list = $('#peopleList');
+    list.addEventListener('change', async function (e) {
+      var gid = e.target.getAttribute && e.target.getAttribute('data-gid'); if (!gid) return;
+      try { await adminCall('admin_set_group', { id: gid, group: e.target.value }); } catch (err) { toast(err.message); }
+      await loadOverview();
+    });
+    list.addEventListener('focusout', function () { setTimeout(function () { if (pendingList && !focusInside('#peopleList')) renderPeople(); }, 0); });
+    list.addEventListener('click', async function (e) {
+      var t = e.target; if (!t.getAttribute) return;
+      var rm = t.getAttribute('data-remove'), pin = t.getAttribute('data-pin'), sp = t.getAttribute('data-savepin');
+      if (t.getAttribute('data-cancelpin')) { A.pinRow = null; renderPeople(); return; }
+      if (pin) { A.pinRow = pin; renderPeople(); var ni = list.querySelector('[data-newpin]'); if (ni) ni.focus(); return; }
+      if (sp) {
+        var val = list.querySelector('[data-newpin]').value;
+        try { await adminCall('admin_reset_pin', { id: sp, pin: val }); toast('PIN redefinido. Avise a pessoa.'); A.pinRow = null; await loadOverview(); }
+        catch (err) { toast(err.message); }
+        return;
+      }
+      if (rm) {
+        if (t.getAttribute('data-armed') !== '1') {
+          t.setAttribute('data-armed', '1'); t.textContent = 'Confirmar remoção';
+          setTimeout(function () { if (t.isConnected) { t.removeAttribute('data-armed'); t.textContent = 'Remover'; } }, 4000);
+          return;
+        }
+        try { await adminCall('admin_remove', { id: rm }); } catch (err) { toast(err.message); }
+        await loadOverview();
+      }
+    });
+    $('#copyInvite').addEventListener('click', function () {
+      var ev = (A.data.cfg.event || '').trim() || 'Amigo Secreto';
+      copyText('Vamos participar do ' + ev + '! Acesse ' + siteUrl() + ', toque em "Quero participar" e preencha seu nome, e-mail, sugestões de presente e um PIN.', 'Convite copiado');
+    });
+    $('#copyMails').addEventListener('click', function () {
+      var mails = A.data.people.map(function (p) { return p.email; }).filter(Boolean);
+      if (!mails.length) { toast('Ainda não há e-mails.'); return; }
+      copyText(mails.join(', '), mails.length + ' e-mails copiados');
+    });
+    $('#copyNotice').addEventListener('click', function () {
+      var ev = (A.data.cfg.event || '').trim() || 'Amigo Secreto';
+      copyText('O sorteio do ' + ev + ' foi liberado! Acesse ' + siteUrl() + ', toque em "Já me inscrevi", entre com seu e-mail e PIN e veja quem você tirou.', 'Aviso copiado');
+    });
+    $('#drawBtn').addEventListener('click', async function () {
+      if (!armed) { armed = true; renderDraw(); armTimer = setTimeout(disarm, 6000); return; }
+      clearTimeout(armTimer); armed = false; busy = true; renderDraw(); setDrawMsg('Sorteando…');
+      try { await adminCall('admin_draw', {}); setDrawMsg('Sorteio liberado. Use "Copiar aviso" e avise o grupo.'); }
+      catch (err) { setDrawMsg(err.message, true); }
+      busy = false; await loadOverview();
+    });
+    $('#reopenBtn').addEventListener('click', async function () {
+      var b = $('#reopenBtn');
+      if (!reopenArmed) { reopenArmed = true; b.textContent = 'Confirmar: apagar resultados'; reopenTimer = setTimeout(function () { reopenArmed = false; b.textContent = 'Reabrir inscrições'; }, 6000); return; }
+      clearTimeout(reopenTimer); reopenArmed = false; b.textContent = 'Reabrir inscrições';
+      try { await adminCall('admin_reopen', {}); setDrawMsg('Inscrições reabertas. Os resultados anteriores foram apagados.'); }
+      catch (err) { setDrawMsg(err.message, true); }
+      await loadOverview();
+    });
+  }
+
+  /* ============ Início ============ */
+  bindAdmin();
+  refresh();
+  if (location.hash === '#admin') showAdmin(true); else if (A.token) { A.open = false; }
+  setInterval(function () {
+    if (document.hidden) return;
+    refresh();
+    if (A.open && A.token && A.data && !focusInside('#adminArea')) loadOverview();
+  }, 30000);
+})();
+</script>
+</body>
+</html>
