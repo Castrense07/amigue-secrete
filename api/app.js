@@ -66,15 +66,52 @@ function upstashStore(url, token) {
   };
 }
 
+/* A Vercel pode criar as variáveis com prefixo (ex.: STORAGE_KV_REST_API_URL).
+ * Por isso procuramos primeiro os nomes padrão e depois qualquer nome que termine igual. */
+function findRedisEnv(env) {
+  const keys = Object.keys(env);
+  const pick = (exact, suffixes) => {
+    for (const k of exact) if (env[k]) return env[k];
+    for (const k of keys) if (env[k] && suffixes.some((s) => k.endsWith(s))) return env[k];
+    return '';
+  };
+  return {
+    url: pick(['UPSTASH_REDIS_REST_URL', 'KV_REST_API_URL'], ['REST_API_URL', 'REST_URL']),
+    token: pick(['UPSTASH_REDIS_REST_TOKEN', 'KV_REST_API_TOKEN'], ['REST_API_TOKEN', 'REST_TOKEN']),
+  };
+}
+
 let _store = null;
 function getStore() {
   if (_store) return _store;
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  const { url, token } = findRedisEnv(process.env);
   if (url && token) _store = upstashStore(url, token);
   else if (!process.env.VERCEL) _store = memoryStore();
-  else throw new HttpError(503, 'Banco de dados não configurado. Siga o passo 3 do README.');
+  else throw new HttpError(503, 'Banco de dados não configurado: o site não encontrou as variáveis do Redis. Abra /api/app?diag=1 neste site para ver o diagnóstico ou siga o passo 3 do README.');
   return _store;
+}
+
+/* Diagnóstico para quem não tem acesso aos logs. Mostra só NOMES de variáveis, nunca valores. */
+async function diagnose() {
+  const names = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH|STORAGE/i.test(k)).sort();
+  const found = findRedisEnv(process.env);
+  const out = {
+    ambiente: process.env.VERCEL ? 'vercel' : 'local',
+    variaveisRelacionadasAoBanco: names,
+    urlDoBancoEncontrada: !!found.url,
+    tokenDoBancoEncontrado: !!found.token,
+    senhaDoOrganizadorDefinida: !!process.env.ADMIN_PASSWORD,
+    banco: '',
+  };
+  try {
+    const s = getStore();
+    await s.set('as:diag', { t: Date.now() }, 30);
+    const back = await s.get('as:diag');
+    out.banco = back && back.t ? 'conectado e funcionando' : 'conectou, mas não conseguiu ler de volta';
+  } catch (e) {
+    out.banco = 'erro: ' + String((e && e.message) || e).replace(/https?:\/\/\S+/g, '[endereço]').slice(0, 160);
+  }
+  return out;
 }
 
 /* ---------- Utilidades ---------- */
@@ -369,6 +406,7 @@ function send(res, code, obj) {
 
 async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'GET' && /[?&]diag=1(&|$)/.test(String(req.url || ''))) return send(res, 200, await diagnose());
   if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
   let body = req.body;
   if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
@@ -385,4 +423,4 @@ async function handler(req, res) {
 }
 
 module.exports = handler;
-module.exports._test = { useStore: (s) => { _store = s; }, memoryStore };
+module.exports._test = { useStore: (s) => { _store = s; }, memoryStore, findRedisEnv, reset: () => { _store = null; } };
