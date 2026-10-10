@@ -107,6 +107,8 @@ async function diagnose(req) {
   const found = findRedisEnv(process.env);
   const out = {
     ambiente: process.env.VERCEL ? 'vercel' : 'local',
+    vercelEnv: process.env.VERCEL_ENV || '',
+    commit: String(process.env.VERCEL_GIT_COMMIT_SHA || '').slice(0, 7),
     urlDoBancoEncontrada: !!found.url,
     tokenDoBancoEncontrado: !!found.token,
     senhaDoOrganizadorDefinida: !!process.env.ADMIN_PASSWORD,
