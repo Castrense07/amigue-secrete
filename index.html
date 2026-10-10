@@ -117,6 +117,21 @@
   .controls input[type="text"] { padding: 7px 10px; font-size: 0.9rem; flex: 1 1 140px; }
   .empty { color: var(--muted); padding: 4px 0; }
 
+  .gift-box { display: grid; gap: 10px; }
+  .gift-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+  .gift-item { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; background: var(--pine-soft); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+  .gift-list.read .gift-item { background: transparent; border: 0; border-top: 1px solid var(--line); border-radius: 0; padding: 6px 0; }
+  .gift-list.read .gift-item:first-child { border-top: 0; }
+  .gift-name { overflow-wrap: anywhere; flex: 1 1 160px; }
+  .gift-price { font-weight: 700; color: var(--pine); white-space: nowrap; }
+  .gift-link { font-size: 0.85rem; }
+  .gift-add { display: flex; flex-wrap: wrap; gap: 8px; }
+  .gift-add input { flex: 1 1 110px; }
+  .gift-add .gift-input-text { flex: 1 1 220px; }
+  .gift-examples { margin-top: 2px; }
+  .gift-examples .chip { cursor: pointer; font-family: inherit; }
+  .gift-list a, .gifts a { color: var(--accent); overflow-wrap: anywhere; }
+
   .status { font-size: 0.9rem; color: var(--muted); overflow-wrap: anywhere; }
   .status.error { color: var(--danger); font-weight: 500; }
   .notice { background: var(--warn-bg); color: var(--warn-fg); border-radius: 10px; padding: 10px 14px; font-size: 0.9rem; }
@@ -139,6 +154,7 @@
 
   <div id="banner" class="banner" hidden></div>
   <p id="noteLine" class="hint" style="white-space:pre-wrap" hidden></p>
+  <p id="budgetLine" class="hint" hidden></p>
 
   <section id="view" class="panel" aria-live="polite"><p class="hint">Carregando…</p></section>
 
@@ -183,6 +199,16 @@
             <label for="evNote">Recado para todos (opcional)</label>
             <textarea id="evNote" maxlength="600" placeholder="Ex.: Valor sugerido R$ 50. Troca de presentes dia 20/12."></textarea>
             <span class="hint"><span id="evNoteCount">0</span>/600</span>
+          </div>
+        </div>
+        <div class="grid">
+          <div class="field">
+            <label for="budgetMin">Valor mínimo sugerido (opcional)</label>
+            <input id="budgetMin" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 30">
+          </div>
+          <div class="field">
+            <label for="budgetMax">Valor máximo sugerido (opcional)</label>
+            <input id="budgetMax" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Ex.: 50">
           </div>
         </div>
         <div class="row"><button class="btn" type="submit">Salvar evento</button><span id="cfgStatus" class="status" role="status"></span></div>
@@ -283,6 +309,129 @@
     if (i && o) o.textContent = String(Math.min(i.value.length, max));
   }
 
+  /* ---------- Sugestões de presente ---------- */
+  var BRL = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' });
+  function fmtPrice(n) { return n == null || isNaN(n) ? '' : BRL.format(n); }
+  function fmtBudget(min, max) {
+    min = Number(min) || 0; max = Number(max) || 0;
+    if (!min && !max) return '';
+    if (min && max) return 'Valor sugerido: ' + fmtPrice(min) + ' a ' + fmtPrice(max);
+    if (max) return 'Valor sugerido: até ' + fmtPrice(max);
+    return 'Valor sugerido: a partir de ' + fmtPrice(min);
+  }
+  function safeLink(u) {
+    var s = String(u == null ? '' : u).trim();
+    if (!s) return '';
+    if (!/^https?:\/\//i.test(s)) {
+      if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(s)) s = 'https://' + s; else return '';
+    }
+    try { var x = new URL(s); return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href : ''; } catch (e) { return ''; }
+  }
+  function parsePrice(v) {
+    if (v === '' || v == null) return null;
+    var n = parseFloat(String(v).replace(/[^\d,.-]/g, '').replace(',', '.'));
+    return (isFinite(n) && n >= 0) ? Math.round(n * 100) / 100 : null;
+  }
+  function linkLabel(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return u; } }
+  function appendLinkified(parent, text) {
+    var re = /(https?:\/\/[^\s<>()]+)/gi, last = 0, m;
+    while ((m = re.exec(text))) {
+      if (m.index > last) parent.appendChild(document.createTextNode(text.slice(last, m.index)));
+      var a = document.createElement('a');
+      a.href = m[1]; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = m[1];
+      parent.appendChild(a); last = m.index + m[1].length;
+    }
+    if (last < text.length) parent.appendChild(document.createTextNode(text.slice(last)));
+  }
+  function giftsToArrayClient(g) {
+    if (Array.isArray(g)) return g.map(function (it) {
+      if (typeof it === 'string') return { text: it, link: '', price: null };
+      return { text: str0(it.text), link: safeLink(it.link), price: (it.price == null ? null : Number(it.price)) };
+    }).filter(function (it) { return it.text; });
+    if (typeof g === 'string') return g.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean).map(function (t) { return { text: t, link: '', price: null }; });
+    return [];
+  }
+  function str0(v) { return String(v == null ? '' : v); }
+  function giftListEl(items, emptyText) {
+    var list = Array.isArray(items) ? items : [];
+    if (!list.length) return makeEl('p', 'gifts', emptyText);
+    var ul = makeEl('ul', 'gift-list read');
+    list.forEach(function (it) {
+      var text = typeof it === 'string' ? it : (it && it.text) || '';
+      var li = makeEl('li', 'gift-item');
+      var name = makeEl('span', 'gift-name');
+      appendLinkified(name, text);
+      li.appendChild(name);
+      if (it && it.price != null && !isNaN(Number(it.price))) li.appendChild(makeEl('span', 'gift-price', fmtPrice(Number(it.price))));
+      var link = it && it.link ? safeLink(it.link) : '';
+      if (link) {
+        var a = document.createElement('a');
+        a.className = 'gift-link'; a.href = link; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = linkLabel(link);
+        li.appendChild(a);
+      }
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+  function giftsToText(items) {
+    return (Array.isArray(items) ? items : []).map(function (it) {
+      var t = typeof it === 'string' ? it : (it && it.text) || '';
+      if (it && it.link) t += ' - ' + it.link;
+      if (it && it.price != null) t += ' (' + fmtPrice(Number(it.price)) + ')';
+      return '- ' + t;
+    }).join('\n');
+  }
+  var GIFT_EXAMPLES = ['livro', 'café especial', 'fone bluetooth', 'camiseta M', 'jogo de tabuleiro'];
+  function buildGiftsField(box, list, onChange) {
+    box.innerHTML = '';
+    var ul = makeEl('ul', 'gift-list');
+    if (list.length) {
+      list.forEach(function (item, i) {
+        var li = makeEl('li', 'gift-item');
+        li.appendChild(makeEl('span', 'gift-name', item.text));
+        if (item.price != null) li.appendChild(makeEl('span', 'gift-price', fmtPrice(item.price)));
+        if (item.link) {
+          var a = document.createElement('a');
+          a.className = 'gift-link'; a.href = item.link; a.target = '_blank'; a.rel = 'noopener noreferrer'; a.textContent = linkLabel(item.link);
+          li.appendChild(a);
+        }
+        var rm = makeEl('button', 'btn btn-small btn-danger', 'Remover'); rm.type = 'button';
+        rm.setAttribute('aria-label', 'Remover sugestão ' + item.text);
+        rm.addEventListener('click', function () { list.splice(i, 1); onChange(); });
+        li.appendChild(rm); ul.appendChild(li);
+      });
+    } else {
+      ul.appendChild(makeEl('li', 'empty', 'Nenhuma sugestão ainda. Adicionar é opcional.'));
+    }
+    box.appendChild(ul);
+
+    var add = makeEl('div', 'gift-add');
+    var t = document.createElement('input'); t.type = 'text'; t.className = 'gift-input-text'; t.maxLength = 120; t.placeholder = 'Sugestão (ex.: fone bluetooth)'; t.setAttribute('aria-label', 'Sugestão de presente');
+    var l = document.createElement('input'); l.type = 'url'; l.maxLength = 500; l.placeholder = 'Link (opcional)'; l.setAttribute('aria-label', 'Link do produto');
+    var p = document.createElement('input'); p.type = 'text'; p.inputMode = 'decimal'; p.maxLength = 12; p.placeholder = 'Preço (opcional)'; p.setAttribute('aria-label', 'Preço aproximado');
+    var b = makeEl('button', 'btn btn-small', 'Adicionar'); b.type = 'button';
+    function addItem() {
+      var text = t.value.trim();
+      if (!text) { t.focus(); return; }
+      if (list.length >= 20) { toast('Máximo de 20 sugestões.'); return; }
+      list.push({ text: text.slice(0, 120), link: safeLink(l.value), price: parsePrice(p.value) });
+      onChange();
+    }
+    b.addEventListener('click', addItem);
+    add.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); addItem(); } });
+    add.appendChild(t); add.appendChild(l); add.appendChild(p); add.appendChild(b);
+    box.appendChild(add);
+
+    var exBox = makeEl('div', 'chips gift-examples');
+    exBox.appendChild(makeEl('span', 'hint', 'Exemplos:'));
+    GIFT_EXAMPLES.forEach(function (ex) {
+      var c = makeEl('button', 'chip chip-plain', ex); c.type = 'button';
+      c.addEventListener('click', function () { t.value = ex; t.focus(); });
+      exBox.appendChild(c);
+    });
+    box.appendChild(exBox);
+  }
+
   async function api(action, data, token) {
     var h = { 'Content-Type': 'application/json' };
     if (token) h.Authorization = 'Bearer ' + token;
@@ -298,13 +447,15 @@
 
   /* ============ Participante ============ */
   var P = { cfg: null, session: LS.get('as_sess'), me: null, tab: 'register', img: '', imgAt: -1, loaded: false, error: '' };
-  var viewKey = '', formDirty = false, shown = false, lastRefreshError = '';
+  var viewKey = '', formDirty = false, shown = false, lastRefreshError = '', regGifts = [], editGifts = [];
 
   function renderHead() {
     var ev = ((P.cfg && P.cfg.event) || '').trim();
     $('#evLine').textContent = ev || 'Cadastre seu nome, e-mail e sugestões de presente. O organizador libera o sorteio depois.';
     var note = ((P.cfg && P.cfg.note) || '').trim();
     var nl = $('#noteLine'); nl.hidden = !note; nl.textContent = note;
+    var bt = fmtBudget(P.cfg && P.cfg.budgetMin, P.cfg && P.cfg.budgetMax);
+    var bl = $('#budgetLine'); bl.hidden = !bt; bl.textContent = bt;
     var b = $('#banner'); b.innerHTML = '';
     if (P.img) {
       b.hidden = false;
@@ -348,7 +499,8 @@
         '<form id="regForm" class="stack" autocomplete="off">' +
         '<div class="grid"><div class="field"><label for="rName">Seu nome</label><input id="rName" type="text" maxlength="80" required></div>' +
         '<div class="field"><label for="rMail">Seu e-mail</label><input id="rMail" type="email" maxlength="120" required></div></div>' +
-        '<div class="field"><label for="rGifts">Sugestões de presente</label><textarea id="rGifts" maxlength="1000" placeholder="Ex.: livros de ficção, café especial, camisetas tamanho M. Quem tirar você vai ler isso."></textarea><span class="hint"><span id="rGiftsCount">0</span>/1000</span></div>' +
+        '<div class="field"><label>Sugestões de presente</label><div id="regGiftsBox" class="gift-box"></div>' +
+        '<span class="hint">Opcional. Dá para adicionar um link e um preço. Quem tirar você vai ler exatamente estas sugestões.</span></div>' +
         '<div class="grid"><div class="field"><label for="rPin">Crie um PIN (mínimo 4 caracteres)</label><input id="rPin" type="password" data-pin minlength="4" maxlength="64" autocomplete="new-password" required></div>' +
         '<div class="field"><label for="rPin2">Repita o PIN</label><input id="rPin2" type="password" data-pin minlength="4" maxlength="64" autocomplete="new-password" required></div></div>' +
         '<label class="check"><input type="checkbox" data-pin-toggle> Mostrar PIN</label>' +
@@ -369,10 +521,12 @@
       b.addEventListener('click', function () { P.tab = b.getAttribute('data-tab'); viewKey = ''; renderView(); });
     });
     wirePinToggles(box);
-    var gf = $('#rGifts'); if (gf) gf.addEventListener('input', function () { updateCount('#rGifts', '#rGiftsCount', 1000); });
+    if ($('#regGiftsBox')) { regGifts = []; renderRegGifts(); }
     var rf = $('#regForm'); if (rf) rf.addEventListener('submit', onRegister);
     var lf = $('#logForm'); if (lf) lf.addEventListener('submit', onLogin);
   }
+  function renderRegGifts() { buildGiftsField($('#regGiftsBox'), regGifts, renderRegGifts); }
+  function renderEditGifts() { buildGiftsField($('#editGiftsBox'), editGifts, renderEditGifts); }
   function buildEdit() {
     $('#view').innerHTML =
       '<div class="panel-head"><p class="label-up">Sua inscrição</p><h2>Você está no sorteio</h2>' +
@@ -380,12 +534,15 @@
       '<form id="editForm" class="stack" autocomplete="off">' +
       '<p class="mail" id="eMail"></p>' +
       '<div class="field"><label for="eName">Seu nome</label><input id="eName" type="text" maxlength="80" required></div>' +
-      '<div class="field"><label for="eGifts">Sugestões de presente</label><textarea id="eGifts" maxlength="1000"></textarea><span class="hint"><span id="eGiftsCount">0</span>/1000</span></div>' +
+      '<div class="field"><label>Sugestões de presente</label><div id="editGiftsBox" class="gift-box"></div>' +
+      '<span class="hint">Quem tirar você vai ler exatamente estas sugestões. Dá para adicionar link e preço.</span></div>' +
       '<div class="row"><button class="btn btn-primary" type="submit">Salvar alterações</button><button id="logout" class="btn" type="button">Sair</button></div></form>' +
       '<p id="eStatus" class="status" role="status"></p>';
     var f = $('#editForm');
-    f.addEventListener('input', function () { formDirty = true; updateCount('#eGifts', '#eGiftsCount', 1000); });
+    f.addEventListener('input', function () { formDirty = true; });
     f.addEventListener('submit', onUpdate);
+    editGifts = giftsToArrayClient(P.me.gifts);
+    renderEditGifts();
     $('#logout').addEventListener('click', logout);
   }
   function buildResult() {
@@ -398,7 +555,7 @@
   var resultSig = '';
   function fillResult() {
     var r = P.me && P.me.result;
-    var sig = (r ? (r.receiverName || '') + '\u0000' + (r.receiverGifts || '') : '') + '|' + (shown ? '1' : '0');
+    var sig = (r ? (r.receiverName || '') + '\u0000' + JSON.stringify(r.receiverGifts || []) : '') + '|' + (shown ? '1' : '0');
     var rb = $('#resBox');
     if (!rb) return;
     if (sig === resultSig && rb.childNodes.length) return;
@@ -414,7 +571,12 @@
       rb.appendChild(makeEl('p', 'label-up', 'Você tirou'));
       rb.appendChild(makeEl('p', 'reveal-name', r.receiverName || ''));
       rb.appendChild(makeEl('p', 'label-up', 'Sugestões de presente'));
-      rb.appendChild(makeEl('p', 'gifts', (r.receiverGifts || '').trim() || 'Essa pessoa não deixou sugestões. Combine com o grupo ou pergunte com discrição.'));
+      rb.appendChild(giftListEl(r.receiverGifts, 'Essa pessoa não deixou sugestões. Combine com o grupo ou pergunte com discrição.'));
+      if (Array.isArray(r.receiverGifts) && r.receiverGifts.length) {
+        var cp = makeEl('button', 'btn btn-small', 'Copiar sugestões'); cp.type = 'button';
+        cp.addEventListener('click', function () { copyText(giftsToText(r.receiverGifts), 'Sugestões copiadas'); });
+        rb.appendChild(cp);
+      }
       var h = makeEl('button', 'btn btn-small', 'Esconder'); h.type = 'button';
       h.addEventListener('click', function () { shown = false; fillResult(); });
       rb.appendChild(h);
@@ -439,7 +601,7 @@
     }
     if (key === 'edit') {
       $('#eMail').textContent = P.me.email;
-      if (!formDirty) { $('#eName').value = P.me.name || ''; $('#eGifts').value = P.me.gifts || ''; }
+      if (!formDirty) $('#eName').value = P.me.name || '';
     }
     if (key === 'result') fillResult();
   }
@@ -452,7 +614,7 @@
     if (pin !== pin2) { gStatus('Os PINs não são iguais. Confira e tente de novo.', true); $('#rPin2').focus(); return; }
     setBusy(form, true); gStatus('Enviando…');
     try {
-      var r = await api('register', { name: $('#rName').value, email: $('#rMail').value, gifts: $('#rGifts').value, pin: pin });
+      var r = await api('register', { name: $('#rName').value, email: $('#rMail').value, gifts: regGifts, pin: pin });
       P.session = r.session; LS.set('as_sess', r.session); viewKey = ''; await refresh(); toast('Inscrição feita');
     } catch (err) { gStatus(err.message, true); }
     finally { setBusy(form, false); }
@@ -473,7 +635,7 @@
     var st = $('#eStatus'); st.className = 'status'; st.textContent = 'Salvando…';
     setBusy(form, true);
     try {
-      await api('update', { name: $('#eName').value, gifts: $('#eGifts').value }, P.session);
+      await api('update', { name: $('#eName').value, gifts: editGifts }, P.session);
       formDirty = false; st.textContent = 'Alterações salvas.'; toast('Alterações salvas'); await refresh();
     } catch (err) { st.textContent = err.message; st.className = 'status error'; }
     finally { setBusy(form, false); }
@@ -518,7 +680,13 @@
     $('#imgRemove').hidden = !P.img;
   }
   function renderCfg() {
-    if (!cfgDirty) { $('#evName').value = A.data.cfg.event || ''; $('#evNote').value = A.data.cfg.note || ''; updateCount('#evNote', '#evNoteCount', 600); }
+    if (!cfgDirty) {
+      $('#evName').value = A.data.cfg.event || '';
+      $('#evNote').value = A.data.cfg.note || '';
+      $('#budgetMin').value = A.data.cfg.budgetMin || '';
+      $('#budgetMax').value = A.data.cfg.budgetMax || '';
+      updateCount('#evNote', '#evNoteCount', 600);
+    }
     renderAdminBanner();
   }
   function renderPools(info, drawn) {
@@ -548,7 +716,7 @@
       who.appendChild(makeEl('span', 'mail', p.email));
       var d = document.createElement('details');
       d.appendChild(makeEl('summary', '', 'Sugestões de presente'));
-      d.appendChild(makeEl('p', 'gifts', (p.gifts || '').trim() || 'Nenhuma sugestão informada.'));
+      d.appendChild(giftListEl(p.gifts, 'Nenhuma sugestão informada.'));
       who.appendChild(d); li.appendChild(who);
       var c = makeEl('div', 'controls');
       if (A.pinRow === p.id) {
@@ -627,9 +795,11 @@
     });
     $('#evName').addEventListener('input', function () { cfgDirty = true; });
     $('#evNote').addEventListener('input', function () { cfgDirty = true; updateCount('#evNote', '#evNoteCount', 600); });
+    $('#budgetMin').addEventListener('input', function () { cfgDirty = true; });
+    $('#budgetMax').addEventListener('input', function () { cfgDirty = true; });
     $('#cfgForm').addEventListener('submit', async function (e) {
       e.preventDefault(); var st = $('#cfgStatus'); st.className = 'status';
-      try { await adminCall('admin_save_cfg', { event: $('#evName').value, note: $('#evNote').value }); cfgDirty = false; st.textContent = 'Evento salvo.'; await loadOverview(); await refresh(); }
+      try { await adminCall('admin_save_cfg', { event: $('#evName').value, note: $('#evNote').value, budgetMin: $('#budgetMin').value, budgetMax: $('#budgetMax').value }); cfgDirty = false; st.textContent = 'Evento salvo.'; await loadOverview(); await refresh(); }
       catch (err) { st.textContent = err.message; st.className = 'status error'; }
     });
     $('#imgInput').addEventListener('change', function (e) {

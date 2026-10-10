@@ -52,6 +52,38 @@ test('e-mail duplicado retorna 409', async () => {
   assert.equal(dup.statusCode, 409);
 });
 
+test('sugestões viram lista e entradas inválidas são descartadas', async () => {
+  freshStore();
+  const gifts = [
+    { text: 'Fone bluetooth', link: 'https://amazon.com.br/dp/x', price: '199,90' },
+    { text: 'Livro', link: 'javascript:alert(1)', price: -5 },
+    { text: '' },
+    'Item solto',
+  ];
+  const r = await reg('Ana', 'ana@x.com', { gifts });
+  assert.equal(r.statusCode, 200);
+  const me = await call('me', {}, r.json.session);
+  assert.equal(me.statusCode, 200);
+  assert.equal(me.json.gifts.length, 3);
+  assert.deepEqual(me.json.gifts[0], { text: 'Fone bluetooth', link: 'https://amazon.com.br/dp/x', price: 199.9 });
+  assert.deepEqual(me.json.gifts[1], { text: 'Livro', link: '', price: null });
+  assert.deepEqual(me.json.gifts[2], { text: 'Item solto', link: '', price: null });
+});
+
+test('faixa de preço do evento vai e volta', async () => {
+  freshStore();
+  process.env.ADMIN_PASSWORD = 'segredo';
+  const at = (await loginAdmin()).json.session;
+  assert.equal((await call('admin_save_cfg', { event: 'Natal', note: '', budgetMin: '30', budgetMax: '50' }, at)).statusCode, 200);
+  const st = await call('state', {});
+  assert.equal(st.json.budgetMin, 30);
+  assert.equal(st.json.budgetMax, 50);
+  const ov = await call('admin_overview', {}, at);
+  assert.equal(ov.json.cfg.budgetMin, 30);
+  assert.equal(ov.json.cfg.budgetMax, 50);
+  delete process.env.ADMIN_PASSWORD;
+});
+
 test('registros concorrentes com o mesmo e-mail não duplicam', async () => {
   freshStore();
   const [a, b] = await Promise.all([reg('A', 'same@x.com'), reg('B', 'same@x.com')]);
@@ -85,6 +117,7 @@ test('sorteio distribui em ciclo e não revela ao organizador', async () => {
     assert.equal(me.statusCode, 200);
     assert.ok(me.json.result && me.json.result.receiverName);
     assert.notEqual(me.json.result.receiverName, name);
+    assert.ok(Array.isArray(me.json.result.receiverGifts));
     picked.push(me.json.result.receiverName);
   }
   assert.deepEqual(picked.sort(), ['Ana', 'Bia', 'Caio']);

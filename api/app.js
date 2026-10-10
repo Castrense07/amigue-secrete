@@ -124,8 +124,57 @@ async function diagnose() {
 
 /* ---------- Utilidades ---------- */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_GIFTS = 20;
 const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
 const normKey = (s) => String(s || '').trim().toLowerCase();
+
+function safeLink(u) {
+  const s = String(u == null ? '' : u).trim();
+  if (!s) return '';
+  try {
+    const x = new URL(s);
+    return (x.protocol === 'http:' || x.protocol === 'https:') ? x.href.slice(0, 500) : '';
+  } catch (e) { return ''; }
+}
+function budgetValue(v) {
+  const n = Number(String(v == null ? '' : v).replace(/[^\d,.-]/g, '').replace(',', '.'));
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.round(n * 100) / 100, 100000000) : 0;
+}
+function normGiftItem(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    const text = str(raw, 120);
+    return text ? { text, link: '', price: null } : null;
+  }
+  if (typeof raw !== 'object') return null;
+  const text = str(raw.text, 120);
+  if (!text) return null;
+  const link = safeLink(raw.link);
+  let price = null;
+  if (raw.price !== '' && raw.price != null) {
+    const n = Number(String(raw.price).replace(/[^\d,.-]/g, '').replace(',', '.'));
+    if (Number.isFinite(n) && n >= 0 && n <= 100000000) price = Math.round(n * 100) / 100;
+  }
+  return { text, link, price };
+}
+/* Aceita tanto o formato antigo (texto livre, uma linha por sugestão) quanto
+ * o novo (lista de objetos { text, link, price }). */
+function parseGifts(input) {
+  let raw = input;
+  if (typeof raw === 'string') raw = raw.split(/\r?\n/);
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const it of raw.slice(0, MAX_GIFTS)) {
+    const item = normGiftItem(it);
+    if (item) out.push(item);
+  }
+  return out;
+}
+function giftsToArray(g) {
+  if (Array.isArray(g)) return g;
+  if (typeof g === 'string') return parseGifts(g);
+  return [];
+}
 
 function hashPin(pin) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -177,7 +226,7 @@ async function withLock(name, ttlSec, fn) {
 
 async function getCfg() {
   const c = await getStore().get('as:cfg');
-  return Object.assign({ status: 'open', event: '', note: '' }, c || {});
+  return Object.assign({ status: 'open', event: '', note: '', budgetMin: 0, budgetMax: 0 }, c || {});
 }
 async function saveCfg(patch) {
   const c = Object.assign(await getCfg(), patch);
@@ -245,7 +294,7 @@ function buildPools(people, groups) {
 const ACTIONS = {
   async state() {
     const cfg = await getCfg();
-    return { event: cfg.event, note: cfg.note, status: cfg.status, imageAt: cfg.imageAt || 0 };
+    return { event: cfg.event, note: cfg.note, status: cfg.status, imageAt: cfg.imageAt || 0, budgetMin: cfg.budgetMin || 0, budgetMax: cfg.budgetMax || 0 };
   },
 
   async image() {
@@ -260,7 +309,7 @@ const ACTIONS = {
     if (cfg.status === 'drawn') throw new HttpError(403, 'As inscrições foram encerradas porque o sorteio já foi liberado.');
     const name = str(ctx.body.name, 80);
     const email = str(ctx.body.email, 120).toLowerCase();
-    const gifts = str(ctx.body.gifts, 1000);
+    const gifts = parseGifts(ctx.body.gifts);
     const pin = String(ctx.body.pin == null ? '' : ctx.body.pin);
     if (!name) throw new HttpError(400, 'Informe seu nome.');
     if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Informe um e-mail válido.');
@@ -292,9 +341,9 @@ const ACTIONS = {
     let result = null;
     if (cfg.status === 'drawn') {
       const r = await getStore().hget('as:results', person.id);
-      if (r) result = { receiverName: r.receiverName, receiverGifts: r.receiverGifts || '' };
+      if (r) result = { receiverName: r.receiverName, receiverGifts: giftsToArray(r.receiverGifts) };
     }
-    return { name: person.name, email: person.email, gifts: person.gifts || '', status: cfg.status, result };
+    return { name: person.name, email: person.email, gifts: giftsToArray(person.gifts), status: cfg.status, result };
   },
 
   async update(ctx) {
@@ -304,7 +353,7 @@ const ACTIONS = {
     const name = str(ctx.body.name, 80);
     if (!name) throw new HttpError(400, 'Informe seu nome.');
     person.name = name;
-    person.gifts = str(ctx.body.gifts, 1000);
+    person.gifts = parseGifts(ctx.body.gifts);
     await getStore().hset('as:people', person.id, person);
     return { ok: true };
   },
@@ -329,14 +378,14 @@ const ACTIONS = {
     const ids = new Set(list.map((p) => p.id));
     const { problems } = buildPools(list, groups);
     const people = list
-      .map((p) => ({ id: p.id, name: p.name, email: p.email, gifts: p.gifts || '', group: (groups[p.id] && groups[p.id].name) || '' }))
+      .map((p) => ({ id: p.id, name: p.name, email: p.email, gifts: giftsToArray(p.gifts), group: (groups[p.id] && groups[p.id].name) || '' }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
     let needsRedraw = false;
     if (cfg.status === 'drawn') {
       needsRedraw = list.some((p) => !results[p.id]) || Object.values(results).some((r) => !ids.has(r.receiverId));
     }
     return {
-      cfg: { event: cfg.event, note: cfg.note, status: cfg.status, drawnAt: cfg.drawnAt || 0 },
+      cfg: { event: cfg.event, note: cfg.note, status: cfg.status, drawnAt: cfg.drawnAt || 0, budgetMin: cfg.budgetMin || 0, budgetMax: cfg.budgetMax || 0 },
       people,
       problems,
       needsRedraw,
@@ -384,7 +433,12 @@ const ACTIONS = {
 
   async admin_save_cfg(ctx) {
     await requireAdmin(ctx);
-    await saveCfg({ event: str(ctx.body.event, 100), note: str(ctx.body.note, 600) });
+    await saveCfg({
+      event: str(ctx.body.event, 100),
+      note: str(ctx.body.note, 600),
+      budgetMin: budgetValue(ctx.body.budgetMin),
+      budgetMax: budgetValue(ctx.body.budgetMax),
+    });
     return { ok: true };
   },
 
@@ -417,7 +471,7 @@ const ACTIONS = {
         const o = secureShuffle(pl.members.slice());
         o.forEach((g, i) => {
           const r = o[(i + 1) % o.length];
-          out[g.id] = { receiverId: r.id, receiverName: r.name, receiverGifts: r.gifts || '', drawnAt: now };
+          out[g.id] = { receiverId: r.id, receiverName: r.name, receiverGifts: giftsToArray(r.gifts), drawnAt: now };
         });
       });
       await s.del('as:results');

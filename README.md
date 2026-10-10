@@ -2,10 +2,10 @@
 
 Site de amigo secreto para um grupo de amigos. Qualquer pessoa com o link participa, sem conta em nenhum serviço.
 
-- Cada participante informa **nome, e-mail, sugestões de presente** e cria um **PIN**.
-- O organizador define **subgrupos** (escondidos dos participantes). O sorteio acontece **só dentro de cada subgrupo**, para ninguém tirar alguém de fora do próprio círculo.
+- Cada participante informa **nome, e-mail, sugestões de presente** (cada uma com texto, link e preço opcional) e cria um **PIN**.
+- O organizador define **subgrupos** (escondidos dos participantes), a **imagem do tema** e uma **faixa de preço sugerida** (opcional). O sorteio acontece **só dentro de cada subgrupo**, para ninguém tirar alguém de fora do próprio círculo.
 - O organizador escolhe a **imagem do tema** e **libera o sorteio** quando quiser.
-- Depois do sorteio, cada pessoa entra com e-mail e PIN e vê **só o próprio resultado**, com as sugestões de presente de quem tirou.
+- Depois do sorteio, cada pessoa entra com e-mail e PIN e vê **só o próprio resultado**, com as sugestões de presente de quem tirou (com links clicáveis e preço).
 - O sorteio é feito no servidor e a área do organizador nunca recebe quem tirou quem.
 
 ## Arquivos
@@ -42,7 +42,7 @@ As variáveis só valem depois de um novo deploy: aba **Deployments**, menu **�
 ## Como usar
 
 1. Abra `https://SEU-PROJETO.vercel.app/#admin` e entre com a senha.
-2. Escolha a imagem do tema e salve o nome do evento e o recado.
+2. Escolha a imagem do tema e salve o nome do evento, o recado e a faixa de preço sugerida.
 3. Toque em **Copiar convite com o link** e envie ao grupo.
 4. Conforme as pessoas se inscreverem, defina o **subgrupo** de cada uma. Quem ficar sem subgrupo é sorteado com os outros sem subgrupo.
 5. Toque em **Liberar sorteio** (e confirme). Depois toque em **Copiar aviso de sorteio liberado** e mande ao grupo.
@@ -62,6 +62,7 @@ As variáveis só valem depois de um novo deploy: aba **Deployments**, menu **�
 - Há limite de tentativas de login por e-mail, por endereço de rede e na senha do organizador. O contador é criado já com expiração, então não fica travado para sempre.
 - As inscrições e o sorteio usam uma trava (lock) no banco: dois cliques ou duas abas não geram resultado duplicado nem e-mail repetido.
 - O diagnóstico em `/api/app?diag=1` mostra só se as variáveis existem (sim/não), nunca os nomes ou os valores.
+- As sugestões de presente aceitam um link por item; só endereços `http`/`https` são guardados e exibidos, sempre como link clicável com `rel="noopener noreferrer"`.
 - Este projeto não envia e-mails. O aviso de sorteio liberado é um texto para você copiar e enviar ao grupo. Para envio automático seria preciso um serviço de e-mail (como o Resend) e, em geral, um domínio verificado.
 - A imagem do tema é reduzida para caber (cerca de 300 KB).
 - Fora da Vercel, sem as variáveis do banco e sem `NODE_ENV=production`, a API usa um banco em memória que apaga tudo ao reiniciar. Serve só para testes locais; em produção ela recusa iniciar sem banco configurado.
