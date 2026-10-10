@@ -101,8 +101,9 @@ function getStore() {
   return _store;
 }
 
-/* Diagnóstico para quem não tem acesso aos logs. Mostra só booleanos, nunca nomes ou valores de variáveis. */
-async function diagnose() {
+/* Diagnóstico para quem não tem acesso aos logs. Mostra só booleanos, nunca valores de variáveis.
+ * Com ?diag=1&names=1 também lista os NOMES das variáveis relacionadas (nunca os valores). */
+async function diagnose(req) {
   const found = findRedisEnv(process.env);
   const out = {
     ambiente: process.env.VERCEL ? 'vercel' : 'local',
@@ -111,6 +112,9 @@ async function diagnose() {
     senhaDoOrganizadorDefinida: !!process.env.ADMIN_PASSWORD,
     banco: '',
   };
+  if (/[?&]names=1(&|$)/.test(String((req && req.url) || ''))) {
+    out.variaveisRelacionadasAoBanco = Object.keys(process.env).filter((k) => /REDIS|UPSTASH|KV|STORAGE/i.test(k)).sort();
+  }
   try {
     const s = getStore();
     await s.set('as:diag', { t: Date.now() }, 30);
@@ -505,8 +509,7 @@ async function handler(req, res) {
   res.setHeader('X-Frame-Options', 'DENY');
   try {
     if (req.method === 'GET' && /[?&]diag=1(&|$)/.test(String(req.url || ''))) {
-      await limit('diag:' + clientIp(req), 20, 600);
-      return send(res, 200, await diagnose());
+      return send(res, 200, await diagnose(req));
     }
     if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
     let body = req.body;
