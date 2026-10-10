@@ -111,6 +111,8 @@
   .mail { color: var(--muted); font-size: 0.9rem; overflow-wrap: anywhere; }
   .gifts { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 0.9rem; }
   details > summary { cursor: pointer; font-size: 0.85rem; color: var(--pine); font-weight: 500; }
+  .check { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--muted); cursor: pointer; }
+  .check input { width: auto; }
   .controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; flex: 0 1 300px; min-width: 0; }
   .controls input[type="text"] { padding: 7px 10px; font-size: 0.9rem; flex: 1 1 140px; }
   .empty { color: var(--muted); padding: 4px 0; }
@@ -175,11 +177,12 @@
         <div class="grid">
           <div class="field">
             <label for="evName">Nome do evento</label>
-            <input id="evName" type="text" placeholder="Ex.: Amigo Secreto de Natal 2026">
+            <input id="evName" type="text" maxlength="100" placeholder="Ex.: Amigo Secreto de Natal 2026">
           </div>
           <div class="field">
             <label for="evNote">Recado para todos (opcional)</label>
-            <textarea id="evNote" placeholder="Ex.: Valor sugerido R$ 50. Troca de presentes dia 20/12."></textarea>
+            <textarea id="evNote" maxlength="600" placeholder="Ex.: Valor sugerido R$ 50. Troca de presentes dia 20/12."></textarea>
+            <span class="hint"><span id="evNoteCount">0</span>/600</span>
           </div>
         </div>
         <div class="row"><button class="btn" type="submit">Salvar evento</button><span id="cfgStatus" class="status" role="status"></span></div>
@@ -216,7 +219,7 @@
     <div class="foot"><button id="adminOut" class="btn-link" type="button">Sair da área do organizador</button></div>
   </div>
 
-  <div class="foot"><button id="toggleAdmin" class="btn-link" type="button">Sou o organizador</button></div>
+  <div class="foot"><button id="toggleAdmin" class="btn-link" type="button">Sou o organizador</button><button id="refreshNow" class="btn-link" type="button">Atualizar</button></div>
 </main>
 <div id="toast" class="toast" role="status"></div>
 
@@ -254,6 +257,31 @@
     else fallback();
   }
   function siteUrl() { return location.origin + location.pathname.replace(/index\.html$/, ''); }
+  function shareOrCopy(text, okMsg) {
+    if (navigator.share) {
+      navigator.share({ text: text }).then(function () {}, function (err) {
+        if (!err || err.name !== 'AbortError') copyText(text, okMsg);
+      });
+    } else copyText(text, okMsg);
+  }
+
+  function wirePinToggles(scope) {
+    (scope || document).querySelectorAll('[data-pin-toggle]').forEach(function (cb) {
+      cb.addEventListener('change', function () {
+        var form = cb.closest('form') || scope || document;
+        form.querySelectorAll('[data-pin]').forEach(function (inp) { inp.type = cb.checked ? 'text' : 'password'; });
+      });
+    });
+  }
+  function setBusy(form, busy) {
+    if (!form) return;
+    var b = form.querySelector('button[type="submit"]');
+    if (b) { b.disabled = busy; b.setAttribute('aria-busy', busy ? 'true' : 'false'); }
+  }
+  function updateCount(inputSel, outSel, max) {
+    var i = $(inputSel), o = $(outSel);
+    if (i && o) o.textContent = String(Math.min(i.value.length, max));
+  }
 
   async function api(action, data, token) {
     var h = { 'Content-Type': 'application/json' };
@@ -270,7 +298,7 @@
 
   /* ============ Participante ============ */
   var P = { cfg: null, session: LS.get('as_sess'), me: null, tab: 'register', img: '', imgAt: -1, loaded: false, error: '' };
-  var viewKey = '', formDirty = false, shown = false;
+  var viewKey = '', formDirty = false, shown = false, lastRefreshError = '';
 
   function renderHead() {
     var ev = ((P.cfg && P.cfg.event) || '').trim();
@@ -299,7 +327,11 @@
         if (st.imageAt) { try { P.img = (await api('image')).dataUrl || ''; } catch (e) { P.img = ''; } } else P.img = '';
         renderAdminBanner();
       }
-    } catch (e) { P.error = e.message; }
+      lastRefreshError = '';
+    } catch (e) {
+      P.error = e.message;
+      if (P.loaded && e.message !== lastRefreshError) { lastRefreshError = e.message; toast('Sem conexão. Mostrando os últimos dados.'); }
+    }
     renderHead(); renderView();
   }
 
@@ -316,15 +348,18 @@
         '<form id="regForm" class="stack" autocomplete="off">' +
         '<div class="grid"><div class="field"><label for="rName">Seu nome</label><input id="rName" type="text" maxlength="80" required></div>' +
         '<div class="field"><label for="rMail">Seu e-mail</label><input id="rMail" type="email" maxlength="120" required></div></div>' +
-        '<div class="field"><label for="rGifts">Sugestões de presente</label><textarea id="rGifts" maxlength="1000" placeholder="Ex.: livros de ficção, café especial, camisetas tamanho M. Quem tirar você vai ler isso."></textarea></div>' +
-        '<div class="field" style="max-width:320px"><label for="rPin">Crie um PIN (mínimo 4 caracteres)</label><input id="rPin" type="password" minlength="4" maxlength="64" autocomplete="new-password" required>' +
-        '<span class="hint">Você vai usar o e-mail e este PIN para voltar e ver quem tirou. Anote-o.</span></div>' +
+        '<div class="field"><label for="rGifts">Sugestões de presente</label><textarea id="rGifts" maxlength="1000" placeholder="Ex.: livros de ficção, café especial, camisetas tamanho M. Quem tirar você vai ler isso."></textarea><span class="hint"><span id="rGiftsCount">0</span>/1000</span></div>' +
+        '<div class="grid"><div class="field"><label for="rPin">Crie um PIN (mínimo 4 caracteres)</label><input id="rPin" type="password" data-pin minlength="4" maxlength="64" autocomplete="new-password" required></div>' +
+        '<div class="field"><label for="rPin2">Repita o PIN</label><input id="rPin2" type="password" data-pin minlength="4" maxlength="64" autocomplete="new-password" required></div></div>' +
+        '<label class="check"><input type="checkbox" data-pin-toggle> Mostrar PIN</label>' +
+        '<span class="hint">Você vai usar o e-mail e este PIN para voltar e ver quem tirou. Anote-o.</span>' +
         '<div class="row"><button class="btn btn-primary" type="submit">Entrar no sorteio</button></div></form>';
     } else {
       html +=
         '<form id="logForm" class="stack">' +
         '<div class="grid"><div class="field"><label for="lMail">Seu e-mail</label><input id="lMail" type="email" autocomplete="username" required></div>' +
-        '<div class="field"><label for="lPin">Seu PIN</label><input id="lPin" type="password" autocomplete="current-password" required></div></div>' +
+        '<div class="field"><label for="lPin">Seu PIN</label><input id="lPin" type="password" data-pin autocomplete="current-password" required></div></div>' +
+        '<label class="check"><input type="checkbox" data-pin-toggle> Mostrar PIN</label>' +
         '<div class="row"><button class="btn btn-primary" type="submit">Entrar</button></div></form>';
     }
     html += '<p id="gStatus" class="status" role="status"></p>';
@@ -333,6 +368,8 @@
     box.querySelectorAll('[data-tab]').forEach(function (b) {
       b.addEventListener('click', function () { P.tab = b.getAttribute('data-tab'); viewKey = ''; renderView(); });
     });
+    wirePinToggles(box);
+    var gf = $('#rGifts'); if (gf) gf.addEventListener('input', function () { updateCount('#rGifts', '#rGiftsCount', 1000); });
     var rf = $('#regForm'); if (rf) rf.addEventListener('submit', onRegister);
     var lf = $('#logForm'); if (lf) lf.addEventListener('submit', onLogin);
   }
@@ -343,11 +380,11 @@
       '<form id="editForm" class="stack" autocomplete="off">' +
       '<p class="mail" id="eMail"></p>' +
       '<div class="field"><label for="eName">Seu nome</label><input id="eName" type="text" maxlength="80" required></div>' +
-      '<div class="field"><label for="eGifts">Sugestões de presente</label><textarea id="eGifts" maxlength="1000"></textarea></div>' +
+      '<div class="field"><label for="eGifts">Sugestões de presente</label><textarea id="eGifts" maxlength="1000"></textarea><span class="hint"><span id="eGiftsCount">0</span>/1000</span></div>' +
       '<div class="row"><button class="btn btn-primary" type="submit">Salvar alterações</button><button id="logout" class="btn" type="button">Sair</button></div></form>' +
       '<p id="eStatus" class="status" role="status"></p>';
     var f = $('#editForm');
-    f.addEventListener('input', function () { formDirty = true; });
+    f.addEventListener('input', function () { formDirty = true; updateCount('#eGifts', '#eGiftsCount', 1000); });
     f.addEventListener('submit', onUpdate);
     $('#logout').addEventListener('click', logout);
   }
@@ -358,9 +395,15 @@
       '<div class="row"><button id="logout" class="btn btn-small" type="button">Sair</button></div>';
     $('#logout').addEventListener('click', logout);
   }
+  var resultSig = '';
   function fillResult() {
-    var rb = $('#resBox'); rb.innerHTML = '';
     var r = P.me && P.me.result;
+    var sig = (r ? (r.receiverName || '') + '\u0000' + (r.receiverGifts || '') : '') + '|' + (shown ? '1' : '0');
+    var rb = $('#resBox');
+    if (!rb) return;
+    if (sig === resultSig && rb.childNodes.length) return;
+    resultSig = sig;
+    rb.innerHTML = '';
     if (!r) { rb.appendChild(makeEl('p', 'hint', 'Seu nome não estava na lista quando o sorteio foi feito. Fale com o organizador.')); return; }
     if (!shown) {
       rb.appendChild(makeEl('p', 'hint', 'O sorteio foi liberado. Confira que ninguém está olhando a sua tela antes de revelar.'));
@@ -403,26 +446,37 @@
   function gStatus(msg, isErr) { var s = $('#gStatus'); if (s) { s.textContent = msg || ''; s.className = isErr ? 'status error' : 'status'; } }
 
   async function onRegister(e) {
-    e.preventDefault(); gStatus('Enviando…');
+    e.preventDefault();
+    var pin = $('#rPin').value, pin2 = $('#rPin2').value;
+    var form = $('#regForm');
+    if (pin !== pin2) { gStatus('Os PINs não são iguais. Confira e tente de novo.', true); $('#rPin2').focus(); return; }
+    setBusy(form, true); gStatus('Enviando…');
     try {
-      var r = await api('register', { name: $('#rName').value, email: $('#rMail').value, gifts: $('#rGifts').value, pin: $('#rPin').value });
+      var r = await api('register', { name: $('#rName').value, email: $('#rMail').value, gifts: $('#rGifts').value, pin: pin });
       P.session = r.session; LS.set('as_sess', r.session); viewKey = ''; await refresh(); toast('Inscrição feita');
     } catch (err) { gStatus(err.message, true); }
+    finally { setBusy(form, false); }
   }
   async function onLogin(e) {
-    e.preventDefault(); gStatus('Entrando…');
+    e.preventDefault();
+    var form = $('#logForm');
+    setBusy(form, true); gStatus('Entrando…');
     try {
       var r = await api('login', { email: $('#lMail').value, pin: $('#lPin').value });
       P.session = r.session; LS.set('as_sess', r.session); viewKey = ''; await refresh();
     } catch (err) { gStatus(err.message, true); }
+    finally { setBusy(form, false); }
   }
   async function onUpdate(e) {
     e.preventDefault();
+    var form = $('#editForm');
     var st = $('#eStatus'); st.className = 'status'; st.textContent = 'Salvando…';
+    setBusy(form, true);
     try {
       await api('update', { name: $('#eName').value, gifts: $('#eGifts').value }, P.session);
       formDirty = false; st.textContent = 'Alterações salvas.'; toast('Alterações salvas'); await refresh();
     } catch (err) { st.textContent = err.message; st.className = 'status error'; }
+    finally { setBusy(form, false); }
   }
   function logout() { P.session = null; P.me = null; LS.del('as_sess'); shown = false; P.tab = 'login'; viewKey = ''; renderView(); }
 
@@ -453,15 +507,9 @@
       if (!by[k]) { by[k] = { key: k, name: raw || 'Sem subgrupo', members: [] }; order.push(k); }
       by[k].members.push(p);
     });
-    var pools = order.map(function (k) { return by[k]; }), problems = [];
-    if (people.length < 2) problems.push('Precisa de pelo menos 2 pessoas inscritas.');
-    else pools.forEach(function (pl) {
-      if (pl.members.length < 2) problems.push(pl.key
-        ? 'O subgrupo "' + pl.name + '" tem só ' + pl.members[0].name + '. Coloque essa pessoa em outro subgrupo.'
-        : pl.members[0].name + ' está sozinho(a) sem subgrupo. Coloque em um subgrupo com outras pessoas.');
-    });
-    return { pools: pools, problems: problems };
+    return { pools: order.map(function (k) { return by[k]; }) };
   }
+  function serverProblems() { return (A.data && A.data.problems) || []; }
 
   function renderAdminBanner() {
     var ab = $('#adminBanner'); if (!ab) return; ab.innerHTML = '';
@@ -470,7 +518,7 @@
     $('#imgRemove').hidden = !P.img;
   }
   function renderCfg() {
-    if (!cfgDirty) { $('#evName').value = A.data.cfg.event || ''; $('#evNote').value = A.data.cfg.note || ''; }
+    if (!cfgDirty) { $('#evName').value = A.data.cfg.event || ''; $('#evNote').value = A.data.cfg.note || ''; updateCount('#evNote', '#evNoteCount', 600); }
     renderAdminBanner();
   }
   function renderPools(info, drawn) {
@@ -480,7 +528,7 @@
     if (A.data.people.length) info.pools.forEach(function (pl) {
       chips.appendChild(makeEl('span', pl.key ? 'chip' : 'chip chip-plain', pl.name + ' · ' + pl.members.length + (pl.members.length === 1 ? ' pessoa' : ' pessoas')));
     });
-    var msgs = info.problems.slice();
+    var msgs = serverProblems().slice();
     if (!msgs.length) info.pools.forEach(function (pl) { if (pl.members.length === 2) msgs.push('O subgrupo "' + pl.name + '" tem 2 pessoas, então elas vão tirar uma à outra.'); });
     if (drawn && A.data.needsRedraw) msgs.unshift('O grupo mudou depois do sorteio. Refaça o sorteio para incluir todos.');
     var warn = $('#poolWarn'); warn.hidden = !msgs.length; warn.textContent = msgs.join(' ');
@@ -520,7 +568,7 @@
     });
   }
   function renderDraw() {
-    var info = poolsInfo(), drawn = A.data.cfg.status === 'drawn', btn = $('#drawBtn');
+    var drawn = A.data.cfg.status === 'drawn', btn = $('#drawBtn');
     $('#reopenBtn').hidden = !drawn;
     var di = $('#drawInfo');
     if (drawn) {
@@ -531,7 +579,7 @@
       di.textContent = 'Ao liberar, o servidor sorteia dentro de cada subgrupo e cada participante passa a ver o seu resultado. Quem se inscrever depois fica de fora.';
       btn.textContent = armed ? 'Confirmar: liberar sorteio' : 'Liberar sorteio';
     }
-    btn.disabled = busy || info.problems.length > 0;
+    btn.disabled = busy || serverProblems().length > 0;
   }
   function renderAdmin() {
     if (!A.data) return;
@@ -564,6 +612,11 @@
 
   function bindAdmin() {
     $('#toggleAdmin').addEventListener('click', function () { showAdmin(true); });
+    $('#refreshNow').addEventListener('click', async function () {
+      var b = $('#refreshNow'); b.disabled = true; b.textContent = 'Atualizando…';
+      try { await refresh(); if (A.open && A.token) await loadOverview(); toast('Atualizado'); }
+      finally { b.disabled = false; b.textContent = 'Atualizar'; }
+    });
     $('#adminOut').addEventListener('click', function () { A.token = null; A.data = null; LS.del('as_admin'); showAdmin(false); });
     $('#adminForm').addEventListener('submit', async function (e) {
       e.preventDefault(); var st = $('#adminLoginStatus'); st.className = 'status'; st.textContent = 'Entrando…';
@@ -573,7 +626,7 @@
       } catch (err) { st.textContent = err.message; st.className = 'status error'; }
     });
     $('#evName').addEventListener('input', function () { cfgDirty = true; });
-    $('#evNote').addEventListener('input', function () { cfgDirty = true; });
+    $('#evNote').addEventListener('input', function () { cfgDirty = true; updateCount('#evNote', '#evNoteCount', 600); });
     $('#cfgForm').addEventListener('submit', async function (e) {
       e.preventDefault(); var st = $('#cfgStatus'); st.className = 'status';
       try { await adminCall('admin_save_cfg', { event: $('#evName').value, note: $('#evNote').value }); cfgDirty = false; st.textContent = 'Evento salvo.'; await loadOverview(); await refresh(); }
@@ -631,7 +684,7 @@
     });
     $('#copyInvite').addEventListener('click', function () {
       var ev = (A.data.cfg.event || '').trim() || 'Amigo Secreto';
-      copyText('Vamos participar do ' + ev + '! Acesse ' + siteUrl() + ', toque em "Quero participar" e preencha seu nome, e-mail, sugestões de presente e um PIN.', 'Convite copiado');
+      shareOrCopy('Vamos participar do ' + ev + '! Acesse ' + siteUrl() + ', toque em "Quero participar" e preencha seu nome, e-mail, sugestões de presente e um PIN.', 'Convite copiado');
     });
     $('#copyMails').addEventListener('click', function () {
       var mails = A.data.people.map(function (p) { return p.email; }).filter(Boolean);
@@ -640,7 +693,7 @@
     });
     $('#copyNotice').addEventListener('click', function () {
       var ev = (A.data.cfg.event || '').trim() || 'Amigo Secreto';
-      copyText('O sorteio do ' + ev + ' foi liberado! Acesse ' + siteUrl() + ', toque em "Já me inscrevi", entre com seu e-mail e PIN e veja quem você tirou.', 'Aviso copiado');
+      shareOrCopy('O sorteio do ' + ev + ' foi liberado! Acesse ' + siteUrl() + ', toque em "Já me inscrevi", entre com seu e-mail e PIN e veja quem você tirou.', 'Aviso copiado');
     });
     $('#drawBtn').addEventListener('click', async function () {
       if (!armed) { armed = true; renderDraw(); armTimer = setTimeout(disarm, 6000); return; }
@@ -662,7 +715,7 @@
   /* ============ Início ============ */
   bindAdmin();
   refresh();
-  if (location.hash === '#admin') showAdmin(true); else if (A.token) { A.open = false; }
+  if (location.hash === '#admin') showAdmin(true);
   setInterval(function () {
     if (document.hidden) return;
     refresh();

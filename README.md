@@ -14,6 +14,8 @@ Site de amigo secreto para um grupo de amigos. Qualquer pessoa com o link partic
 | --- | --- |
 | `index.html` | A página inteira (participantes e organizador) |
 | `api/app.js` | A API: inscrição, login, sorteio e área do organizador |
+| `vercel.json` | Cabeçalhos de segurança da página (CSP e afins) |
+| `test/app.test.js` | Testes automatizados da API (`npm test`) |
 | `package.json` | Dependência do banco de dados (`@upstash/redis`) |
 
 ## Como publicar
@@ -57,7 +59,19 @@ As variáveis só valem depois de um novo deploy: aba **Deployments**, menu **�
 
 - PINs são guardados com hash (scrypt) e nunca voltam para a tela. O organizador pode definir um novo PIN para quem esqueceu, mas não vê o antigo. Quem recebe um PIN definido por você passa a ser alguém cujo resultado você poderia abrir, então só use isso quando for necessário.
 - O organizador não recebe resultados pela página. Mas quem tem acesso ao painel da Upstash ou da Vercel consegue ler o banco de dados, onde os resultados ficam guardados. Para manter a surpresa, o organizador pode evitar abrir o banco.
-- Há limite de tentativas de login por e-mail, por endereço de rede e na senha do organizador.
+- Há limite de tentativas de login por e-mail, por endereço de rede e na senha do organizador. O contador é criado já com expiração, então não fica travado para sempre.
+- As inscrições e o sorteio usam uma trava (lock) no banco: dois cliques ou duas abas não geram resultado duplicado nem e-mail repetido.
+- O diagnóstico em `/api/app?diag=1` mostra só se as variáveis existem (sim/não), nunca os nomes ou os valores.
 - Este projeto não envia e-mails. O aviso de sorteio liberado é um texto para você copiar e enviar ao grupo. Para envio automático seria preciso um serviço de e-mail (como o Resend) e, em geral, um domínio verificado.
 - A imagem do tema é reduzida para caber (cerca de 300 KB).
-- Fora da Vercel, sem as variáveis do banco, a API usa um banco em memória que apaga tudo ao reiniciar. Serve só para testes locais.
+- Fora da Vercel, sem as variáveis do banco e sem `NODE_ENV=production`, a API usa um banco em memória que apaga tudo ao reiniciar. Serve só para testes locais; em produção ela recusa iniciar sem banco configurado.
+
+## Testes
+
+Com Node 18+ rodando na raiz do projeto:
+
+```sh
+npm test
+```
+
+Os testes usam um banco em memória e cobrem inscrição, login, sorteio, privacidade do organizador e limites.

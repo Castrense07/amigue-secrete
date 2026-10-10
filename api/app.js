@@ -29,6 +29,11 @@ function memoryStore() {
   return {
     async get(k) { const e = alive(k); return e ? clone(e.val) : null; },
     async set(k, v, ex) { m.set(k, { val: clone(v), exp: ex ? Date.now() + ex * 1000 : 0 }); },
+    async setnx(k, v, ex) {
+      if (alive(k)) return false;
+      m.set(k, { val: clone(v), exp: ex ? Date.now() + ex * 1000 : 0 });
+      return true;
+    },
     async del(k) { m.delete(k); },
     async hget(k, f) { const e = alive(k); return e && f in e.val ? clone(e.val[f]) : null; },
     async hset(k, f, v) {
@@ -55,6 +60,10 @@ function upstashStore(url, token) {
   return {
     get: (k) => r.get(k),
     set: (k, v, ex) => (ex ? r.set(k, v, { ex }) : r.set(k, v)),
+    setnx: async (k, v, ex) => {
+      const opts = ex ? { nx: true, ex } : { nx: true };
+      return (await r.set(k, v, opts)) === 'OK';
+    },
     del: (k) => r.del(k),
     hget: (k, f) => r.hget(k, f),
     hset: (k, f, v) => r.hset(k, { [f]: v }),
@@ -82,22 +91,21 @@ function findRedisEnv(env) {
 }
 
 let _store = null;
+function isProd() { return !!(process.env.VERCEL || process.env.NODE_ENV === 'production'); }
 function getStore() {
   if (_store) return _store;
   const { url, token } = findRedisEnv(process.env);
   if (url && token) _store = upstashStore(url, token);
-  else if (!process.env.VERCEL) _store = memoryStore();
+  else if (!isProd()) _store = memoryStore();
   else throw new HttpError(503, 'Banco de dados não configurado: o site não encontrou as variáveis do Redis. Abra /api/app?diag=1 neste site para ver o diagnóstico ou siga o passo 3 do README.');
   return _store;
 }
 
-/* Diagnóstico para quem não tem acesso aos logs. Mostra só NOMES de variáveis, nunca valores. */
+/* Diagnóstico para quem não tem acesso aos logs. Mostra só booleanos, nunca nomes ou valores de variáveis. */
 async function diagnose() {
-  const names = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH|STORAGE/i.test(k)).sort();
   const found = findRedisEnv(process.env);
   const out = {
     ambiente: process.env.VERCEL ? 'vercel' : 'local',
-    variaveisRelacionadasAoBanco: names,
     urlDoBancoEncontrada: !!found.url,
     tokenDoBancoEncontrado: !!found.token,
     senhaDoOrganizadorDefinida: !!process.env.ADMIN_PASSWORD,
@@ -149,9 +157,22 @@ function clientIp(req) {
 async function limit(key, max, windowSec) {
   const s = getStore();
   const k = 'as:rl:' + key;
+  // Cria a chave já com expiração (atômico). Só então incrementa, para que
+  // nunca exista um contador sem TTL que trave o acesso para sempre.
+  await s.setnx(k, 0, windowSec);
   const n = await s.incr(k);
-  if (n === 1) await s.expire(k, windowSec);
   if (n > max) throw new HttpError(429, 'Muitas tentativas. Aguarde alguns minutos e tente de novo.');
+}
+
+/* Evita execuções simultâneas que corromperiam os dados (ex.: dois sorteios
+ * ou duas inscrições com o mesmo e-mail ao mesmo tempo). */
+async function withLock(name, ttlSec, fn) {
+  const s = getStore();
+  const k = 'as:lock:' + name;
+  const ok = await s.setnx(k, Date.now(), ttlSec);
+  if (!ok) throw new HttpError(409, 'Operação em andamento. Tente de novo em instantes.');
+  try { return await fn(); }
+  finally { try { await s.del(k); } catch (e) {} }
 }
 
 async function getCfg() {
@@ -166,8 +187,18 @@ async function saveCfg(patch) {
 
 async function newSession(payload, ttlSec) {
   const token = crypto.randomBytes(24).toString('base64url');
-  await getStore().set('as:sess:' + token, payload, ttlSec);
+  const s = getStore();
+  await s.set('as:sess:' + token, payload, ttlSec);
+  if (payload && payload.id) await s.hset('as:sessidx', token, { id: payload.id });
   return token;
+}
+async function dropSessionsOf(personId) {
+  const s = getStore();
+  const idx = await s.hgetall('as:sessidx');
+  for (const token of Object.keys(idx || {})) {
+    const e = idx[token];
+    if (e && e.id === personId) { await s.del('as:sess:' + token); await s.hdel('as:sessidx', token); }
+  }
 }
 function bearer(req) {
   const h = (req.headers && (req.headers.authorization || req.headers.Authorization)) || '';
@@ -234,11 +265,13 @@ const ACTIONS = {
     if (!name) throw new HttpError(400, 'Informe seu nome.');
     if (!EMAIL_RE.test(email)) throw new HttpError(400, 'Informe um e-mail válido.');
     if (pin.length < 4 || pin.length > 64) throw new HttpError(400, 'O PIN precisa ter pelo menos 4 caracteres.');
-    if (await s.hget('as:emails', email)) throw new HttpError(409, 'Esse e-mail já está inscrito. Use a aba "Já me inscrevi" para entrar.');
-    const id = crypto.randomBytes(6).toString('hex');
-    await s.hset('as:people', id, { id, name, email, gifts, pin: hashPin(pin), createdAt: Date.now() });
-    await s.hset('as:emails', email, { id });
-    return { session: await newSession({ id }, 60 * 60 * 24 * 60) };
+    return await withLock('register:' + email, 15, async () => {
+      if (await s.hget('as:emails', email)) throw new HttpError(409, 'Não foi possível criar a inscrição com este e-mail. Se já se inscreveu, entre pela aba "Já me inscrevi".');
+      const id = crypto.randomBytes(6).toString('hex');
+      await s.hset('as:people', id, { id, name, email, gifts, pin: hashPin(pin), createdAt: Date.now() });
+      await s.hset('as:emails', email, { id });
+      return { session: await newSession({ id }, 60 * 60 * 24 * 60) };
+    });
   },
 
   async login(ctx) {
@@ -294,6 +327,7 @@ const ACTIONS = {
     const results = await s.hgetall('as:results');
     const list = Object.values(peopleMap);
     const ids = new Set(list.map((p) => p.id));
+    const { problems } = buildPools(list, groups);
     const people = list
       .map((p) => ({ id: p.id, name: p.name, email: p.email, gifts: p.gifts || '', group: (groups[p.id] && groups[p.id].name) || '' }))
       .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -303,8 +337,8 @@ const ACTIONS = {
     }
     return {
       cfg: { event: cfg.event, note: cfg.note, status: cfg.status, drawnAt: cfg.drawnAt || 0 },
-      hasImage: !!cfg.imageAt,
       people,
+      problems,
       needsRedraw,
     };
   },
@@ -326,6 +360,7 @@ const ACTIONS = {
     const id = str(ctx.body.id, 40);
     const person = await s.hget('as:people', id);
     if (!person) return { ok: true };
+    await dropSessionsOf(id);
     await s.hdel('as:people', id);
     await s.hdel('as:emails', person.email);
     await s.hdel('as:groups', id);
@@ -343,6 +378,7 @@ const ACTIONS = {
     if (pin.length < 4 || pin.length > 64) throw new HttpError(400, 'O PIN precisa ter pelo menos 4 caracteres.');
     person.pin = hashPin(pin);
     await s.hset('as:people', id, person);
+    await dropSessionsOf(id);
     return { ok: true };
   },
 
@@ -367,33 +403,37 @@ const ACTIONS = {
 
   async admin_draw(ctx) {
     await requireAdmin(ctx);
-    const s = getStore();
-    const people = Object.values(await s.hgetall('as:people'));
-    const groups = await s.hgetall('as:groups');
-    const { pools, problems } = buildPools(people, groups);
-    if (problems.length) throw new HttpError(400, problems[0]);
-    const cfg = await getCfg();
-    if (cfg.status === 'drawn') await saveCfg({ status: 'open' });
-    const now = Date.now();
-    const out = {};
-    pools.forEach((pl) => {
-      const o = secureShuffle(pl.members.slice());
-      o.forEach((g, i) => {
-        const r = o[(i + 1) % o.length];
-        out[g.id] = { receiverId: r.id, receiverName: r.name, receiverGifts: r.gifts || '', drawnAt: now };
+    return await withLock('draw', 60, async () => {
+      const s = getStore();
+      const people = Object.values(await s.hgetall('as:people'));
+      const groups = await s.hgetall('as:groups');
+      const { pools, problems } = buildPools(people, groups);
+      if (problems.length) throw new HttpError(400, problems[0]);
+      const cfg = await getCfg();
+      if (cfg.status === 'drawn') await saveCfg({ status: 'open' });
+      const now = Date.now();
+      const out = {};
+      pools.forEach((pl) => {
+        const o = secureShuffle(pl.members.slice());
+        o.forEach((g, i) => {
+          const r = o[(i + 1) % o.length];
+          out[g.id] = { receiverId: r.id, receiverName: r.name, receiverGifts: r.gifts || '', drawnAt: now };
+        });
       });
+      await s.del('as:results');
+      await s.hmset('as:results', out);
+      await saveCfg({ status: 'drawn', drawnAt: now });
+      return { ok: true, people: people.length, pools: pools.length };
     });
-    await s.del('as:results');
-    await s.hmset('as:results', out);
-    await saveCfg({ status: 'drawn', drawnAt: now });
-    return { ok: true, people: people.length, pools: pools.length };
   },
 
   async admin_reopen(ctx) {
     await requireAdmin(ctx);
-    await saveCfg({ status: 'open' });
-    await getStore().del('as:results');
-    return { ok: true };
+    return await withLock('draw', 60, async () => {
+      await saveCfg({ status: 'open', drawnAt: 0 });
+      await getStore().del('as:results');
+      return { ok: true };
+    });
   },
 };
 
@@ -406,14 +446,20 @@ function send(res, code, obj) {
 
 async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (req.method === 'GET' && /[?&]diag=1(&|$)/.test(String(req.url || ''))) return send(res, 200, await diagnose());
-  if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
-  let body = req.body;
-  if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
-  body = body && typeof body === 'object' ? body : {};
-  const fn = Object.prototype.hasOwnProperty.call(ACTIONS, body.action) ? ACTIONS[body.action] : null;
-  if (!fn) return send(res, 404, { error: 'Ação desconhecida.' });
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'same-origin');
+  res.setHeader('X-Frame-Options', 'DENY');
   try {
+    if (req.method === 'GET' && /[?&]diag=1(&|$)/.test(String(req.url || ''))) {
+      await limit('diag:' + clientIp(req), 20, 600);
+      return send(res, 200, await diagnose());
+    }
+    if (req.method !== 'POST') return send(res, 405, { error: 'Método não permitido.' });
+    let body = req.body;
+    if (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { body = {}; } }
+    body = body && typeof body === 'object' ? body : {};
+    const fn = Object.prototype.hasOwnProperty.call(ACTIONS, body.action) ? ACTIONS[body.action] : null;
+    if (!fn) return send(res, 404, { error: 'Ação desconhecida.' });
     return send(res, 200, await fn({ req, body }));
   } catch (e) {
     if (e instanceof HttpError) return send(res, e.status, { error: e.message });
