@@ -5,7 +5,7 @@ Site de amigo secreto para um grupo de amigos. Qualquer pessoa com o link partic
 - Cada participante informa **nome, e-mail, sugestões de presente** (cada uma com texto, link e preço opcional) e cria um **PIN**.
 - O organizador define **subgrupos** (escondidos dos participantes), a **imagem do tema** e uma **faixa de preço sugerida** (opcional). O sorteio acontece **só dentro de cada subgrupo**, para ninguém tirar alguém de fora do próprio círculo.
 - O organizador escolhe a **imagem do tema** e **libera o sorteio** quando quiser.
-- Depois do sorteio, cada pessoa entra com e-mail e PIN e vê **só o próprio resultado**, com as sugestões de presente de quem tirou (com links clicáveis e preço).
+- Depois do sorteio, cada pessoa entra com e-mail e PIN e vê **só o próprio resultado**, com as sugestões de presente de quem tirou (com links clicáveis e preço). As sugestões podem ser atualizadas depois do sorteio e o resultado mostra a versão mais recente.
 - O sorteio é feito no servidor e a área do organizador nunca recebe quem tirou quem.
 
 ## Arquivos
@@ -53,7 +53,7 @@ As variáveis só valem depois de um novo deploy: aba **Deployments**, menu **�
 - Ninguém tira a si mesmo e cada pessoa é tirada exatamente uma vez.
 - Cada subgrupo precisa ter pelo menos 2 pessoas. Com 2 pessoas, elas tiram uma à outra.
 - Com 3 ou mais pessoas no subgrupo, o sorteio forma um ciclo único, sem trocas de par a par.
-- Depois do sorteio as inscrições ficam fechadas. Para incluir alguém, use **Reabrir inscrições** e sorteie de novo (os resultados antigos são apagados).
+- Depois do sorteio as inscrições ficam fechadas. Para incluir alguém, use **Reabrir inscrições** e sorteie de novo (os resultados antigos são apagados). Quem já está inscrito continua podendo editar nome e sugestões antes do sorteio; depois dele, a tela de resultado permite atualizar as sugestões, e quem tirou a pessoa vê a lista atualizada.
 
 ## Privacidade e limites
 

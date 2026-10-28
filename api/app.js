@@ -347,7 +347,15 @@ const ACTIONS = {
     let result = null;
     if (cfg.status === 'drawn') {
       const r = await getStore().hget('as:results', person.id);
-      if (r) result = { receiverName: r.receiverName, receiverGifts: giftsToArray(r.receiverGifts) };
+      if (r) {
+        /* O resultado guarda o id de quem foi sorteado; nome e sugestões são
+         * lidos ao vivo para que edições feitas depois do sorteio apareçam. */
+        const target = r.receiverId ? await getStore().hget('as:people', r.receiverId) : null;
+        result = {
+          receiverName: (target && target.name) || r.receiverName,
+          receiverGifts: giftsToArray(target ? target.gifts : r.receiverGifts),
+        };
+      }
     }
     return { name: person.name, email: person.email, gifts: giftsToArray(person.gifts), status: cfg.status, result };
   },
@@ -355,10 +363,14 @@ const ACTIONS = {
   async update(ctx) {
     const person = await requirePerson(ctx);
     const cfg = await getCfg();
-    if (cfg.status === 'drawn') throw new HttpError(403, 'O sorteio já foi liberado e a inscrição não pode mais ser editada.');
+    /* Depois do sorteio o nome fica travado (o resultado já foi revelado com
+     * ele), mas as sugestões continuam editáveis: quem tirou a pessoa vê a
+     * lista atualizada porque `me` monta o resultado ao vivo. */
     const name = str(ctx.body.name, 80);
-    if (!name) throw new HttpError(400, 'Informe seu nome.');
-    person.name = name;
+    if (cfg.status !== 'drawn') {
+      if (!name) throw new HttpError(400, 'Informe seu nome.');
+      person.name = name;
+    }
     person.gifts = parseGifts(ctx.body.gifts);
     await getStore().hset('as:people', person.id, person);
     return { ok: true };

@@ -152,6 +152,49 @@ test('inscrições fecham depois do sorteio', async () => {
   delete process.env.ADMIN_PASSWORD;
 });
 
+test('sugestões podem ser editadas depois do sorteio e aparecem atualizadas', async () => {
+  freshStore();
+  process.env.ADMIN_PASSWORD = 'segredo';
+  const s1 = (await reg('Ana', 'ana@x.com', { gifts: 'Livro' })).json.session;
+  const s2 = (await reg('Bia', 'bia@x.com')).json.session;
+
+  /* Antes do sorteio, nome e sugestões são editáveis. */
+  const pre = await call('update', { name: 'Ana Souza', gifts: 'Livro' }, s1);
+  assert.equal(pre.statusCode, 200);
+
+  const at = (await loginAdmin()).json.session;
+  assert.equal((await call('admin_draw', {}, at)).statusCode, 200);
+
+  const before = await call('me', {}, s2);
+  assert.equal(before.json.result.receiverName, 'Ana Souza');
+  assert.deepEqual(before.json.result.receiverGifts, [{ text: 'Livro', link: '', price: null }]);
+
+  /* Depois do sorteio o nome fica travado, mas as sugestões podem mudar. */
+  const upd = await call('update', {
+    name: 'Ana Maria',
+    gifts: [{ text: 'Fone bluetooth', link: 'https://loja.test/fone', price: '150,50' }],
+  }, s1);
+  assert.equal(upd.statusCode, 200);
+
+  const after = await call('me', {}, s2);
+  assert.equal(after.json.result.receiverName, 'Ana Souza');
+  assert.deepEqual(after.json.result.receiverGifts, [{ text: 'Fone bluetooth', link: 'https://loja.test/fone', price: 150.5 }]);
+
+  const own = await call('me', {}, s1);
+  assert.equal(own.json.name, 'Ana Souza');
+  assert.deepEqual(own.json.gifts, [{ text: 'Fone bluetooth', link: 'https://loja.test/fone', price: 150.5 }]);
+
+  /* Atualização só das sugestões mantém o nome atual. */
+  const upd2 = await call('update', { gifts: [] }, s1);
+  assert.equal(upd2.statusCode, 200);
+  const own2 = await call('me', {}, s1);
+  assert.equal(own2.json.name, 'Ana Souza');
+  assert.deepEqual(own2.json.gifts, []);
+  const after2 = await call('me', {}, s2);
+  assert.deepEqual(after2.json.result.receiverGifts, []);
+  delete process.env.ADMIN_PASSWORD;
+});
+
 test('reabrir limpa resultados e drawnAt', async () => {
   freshStore();
   process.env.ADMIN_PASSWORD = 'segredo';

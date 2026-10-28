@@ -142,6 +142,7 @@
 
   .panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: clamp(18px, 3.5vw, 28px); display: grid; gap: 18px; min-width: 0; box-shadow: var(--shadow); }
   .panel-head { display: grid; gap: 6px; }
+  .panel-head h3 { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.015em; margin: 0; }
   .hint { color: var(--muted); font-size: 0.9rem; max-width: 64ch; text-wrap: pretty; }
   .admin { display: grid; gap: 20px; }
   .admin-title { display: grid; gap: 6px; padding-top: 14px; border-top: 2px solid var(--pine); }
@@ -238,6 +239,11 @@
   .notice { background: var(--warn-bg); color: var(--warn-fg); border: 1px solid var(--warn-line); border-radius: 12px; padding: 12px 14px; font-size: 0.9rem; }
   .reveal-box { display: grid; gap: 14px; justify-items: start; }
   .reveal-name { font-family: var(--font-display); font-size: clamp(1.9rem, 7vw, 2.8rem); line-height: 1.05; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  .my-gifts { display: grid; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line); }
+  .my-gifts .gift-list { width: 100%; }
+  .my-gifts .gift-list.read .gift-item:first-child { border-top: 1px solid var(--line); padding-top: 8px; }
+  .my-gifts .gift-list.read .gift-item:first-child:only-child { border-top: 0; padding-top: 0; }
+  .my-gifts .row { margin-top: 2px; }
 
   .foot { display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap; padding-top: 4px; }
 
@@ -666,7 +672,7 @@
   function buildEdit() {
     $('#view').innerHTML =
       '<div class="panel-head"><p class="label-up">Sua inscrição</p><h2>Você está no sorteio</h2>' +
-      '<p class="hint">Você pode editar seus dados até o organizador liberar o sorteio. Volte aqui depois para ver quem tirou.</p></div>' +
+      '<p class="hint">Você pode editar nome e sugestões enquanto o sorteio não for liberado. Depois, a tela de resultado permite atualizar as sugestões.</p></div>' +
       '<form id="editForm" class="stack" autocomplete="off">' +
       '<p class="mail" id="eMail"></p>' +
       '<div class="field"><label for="eName">Seu nome</label><input id="eName" type="text" maxlength="80" required></div>' +
@@ -681,14 +687,62 @@
     renderEditGifts();
     $('#logout').addEventListener('click', logout);
   }
+  var resultSig = '', resultEditing = false, resultGifts = [];
   function buildResult() {
+    resultSig = ''; shown = false; resultEditing = false; resultGifts = [];
     $('#view').innerHTML =
       '<div class="panel-head"><p class="label-up">Resultado</p><h2>Seu amigo secreto</h2></div>' +
       '<div id="resBox" class="reveal-box"></div>' +
+      '<section class="my-gifts" aria-labelledby="myGiftsTitle">' +
+      '<div class="panel-head"><p class="label-up">Sua lista</p><h3 id="myGiftsTitle">Suas sugestões de presente</h3>' +
+      '<p class="hint">Quem tirou você vê esta lista. Dá para atualizá-la a qualquer momento, mesmo depois do sorteio.</p></div>' +
+      '<div id="myGiftsBody"></div></section>' +
       '<div class="row"><button id="logout" class="btn btn-small" type="button">Sair</button></div>';
     $('#logout').addEventListener('click', logout);
+    renderMyGifts();
   }
-  var resultSig = '';
+  function renderMyGifts() {
+    var box = $('#myGiftsBody');
+    if (!box) return;
+    box.innerHTML = '';
+    if (!resultEditing) {
+      box.appendChild(giftListEl(P.me.gifts, 'Você ainda não adicionou sugestões de presente. Quem tirar você pode combinar com o grupo ou perguntar com discrição.'));
+      var edit = makeEl('button', 'btn btn-small', 'Editar sugestões'); edit.type = 'button';
+      edit.addEventListener('click', function () {
+        resultEditing = true;
+        resultGifts = giftsToArrayClient(P.me.gifts);
+        renderMyGifts();
+      });
+      var viewRow = makeEl('div', 'row'); viewRow.appendChild(edit); box.appendChild(viewRow);
+      return;
+    }
+    var form = document.createElement('form');
+    form.className = 'stack'; form.id = 'myGiftsForm'; form.autocomplete = 'off';
+    var field = makeEl('div', 'gift-box'); field.id = 'myGiftsField';
+    var st = makeEl('p', 'status'); st.id = 'myGiftsStatus'; st.setAttribute('role', 'status');
+    var row = makeEl('div', 'row');
+    var save = makeEl('button', 'btn btn-primary btn-small', 'Salvar sugestões'); save.type = 'submit';
+    var cancel = makeEl('button', 'btn btn-small', 'Cancelar'); cancel.type = 'button';
+    row.appendChild(save); row.appendChild(cancel);
+    form.appendChild(field); form.appendChild(row); form.appendChild(st);
+    box.appendChild(form);
+    function rerender() { buildGiftsField(field, resultGifts, rerender); }
+    rerender();
+    cancel.addEventListener('click', function () { resultEditing = false; renderMyGifts(); });
+    form.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      var s = $('#myGiftsStatus'); s.className = 'status'; s.textContent = 'Salvando…';
+      setBusy(form, true);
+      try {
+        await api('update', { gifts: resultGifts }, P.session);
+        resultEditing = false;
+        await refresh();
+        renderMyGifts();
+        toast('Sugestões atualizadas');
+      } catch (err) { s.textContent = err.message; s.className = 'status error'; }
+      finally { setBusy(form, false); }
+    });
+  }
   function fillResult() {
     var r = P.me && P.me.result;
     var sig = (r ? (r.receiverName || '') + '\u0000' + JSON.stringify(r.receiverGifts || []) : '') + '|' + (shown ? '1' : '0');
